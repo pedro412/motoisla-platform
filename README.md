@@ -30,6 +30,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
 - `/login` autenticación
 - `/pos` POS privado
 - `/admin/reports` reportes admin
+- `/purchases/imports` compras con parseo de factura
 
 ## Integración backend
 - BFF en Next (`/api/auth/*`, `/api/proxy/*`)
@@ -46,17 +47,21 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
 - Catálogo público con búsqueda y paginación.
 - POS create/confirm/void.
 - Reportes admin (`/metrics`, `/reports/sales`).
+- Compras por importación con parse local (`MYESA`) y confirmación backend transaccional (`preview-confirm`).
+- Cálculo de `precio_publico` y margen en tiempo real por línea.
 
 ### En curso / pendiente
 - Mejorar validaciones y UX de errores en POS.
 - E2E funcional completo de negocio (no solo smoke).
 - Endurecimiento de errores globales y observabilidad frontend.
+- E2E profundo de compras (parse cliente/edición/confirm + validación de stock).
 
 ### Backlog
 - UI de `expenses`.
 - UI de `layaway`.
 - UI de `investors/ledger`.
 - Multipago POS.
+- Carga de imagen en tabla preview de compras (placeholder ya reservado).
 
 ## Documentación
 - [docs index](./docs/README.md)

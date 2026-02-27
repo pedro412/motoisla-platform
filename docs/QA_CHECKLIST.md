@@ -21,6 +21,13 @@
 - [ ] muestra total sales, avg ticket y top products.
 - [ ] muestra neto después de gastos.
 
+## Purchases
+- [ ] `/purchases/imports` carga proveedores y parsers.
+- [ ] parse de factura MYESA genera preview editable.
+- [ ] `precio_publico` y margen se actualizan en tiempo real.
+- [ ] confirmación de compra devuelve `purchase_receipt_id`.
+- [ ] stock incrementa después de confirmar.
+
 ## Guards
 - [ ] usuario sin sesión no entra a `/pos` ni `/admin/*`.
 - [ ] `CASHIER` no accede a `/admin/reports`.

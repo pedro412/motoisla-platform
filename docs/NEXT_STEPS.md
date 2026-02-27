@@ -7,11 +7,14 @@
 - reglas `CARD`/`card_type`
 - restricciones de descuento para cashier.
 3. Agregar feedback post-confirm (estado final + limpieza de carrito).
+4. Ajustar UX de compras para edición masiva de líneas y guardado por lote.
+5. Extender parser cliente a proveedores adicionales además de MYESA.
 
 ## P2 - QA funcional
 1. E2E completo de:
 - login -> create sale -> confirm -> void
-- reporte por rango con datos esperados.
+- reporte por rango con datos esperados
+- compras -> parse factura MYESA -> editar -> confirmar.
 2. Verificación cruzada con `motoisla-server/docs/API_QA_COLLECTION.http`.
 
 ## P3 - Hardening
@@ -24,3 +27,5 @@
 2. UI de apartados (`layaway`).
 3. UI de inversionistas/ledger (`investors`).
 4. Multipago POS.
+5. Carga de imagen por línea en preview de compras.
+6. Deprecar en backend el parse remoto legacy cuando el flujo local esté estabilizado.

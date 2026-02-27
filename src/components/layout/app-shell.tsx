@@ -15,6 +15,10 @@ interface AppShellProps {
 }
 
 function getTitleFromPath(pathname: string): string {
+  if (pathname.startsWith("/purchases/imports")) {
+    return "Compras";
+  }
+
   if (pathname.startsWith("/admin/reports")) {
     return "Admin Reports";
   }
