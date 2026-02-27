@@ -10,6 +10,8 @@ export interface ParsedPreviewLine {
   unit_cost: string | null;
   unit_price: string | null;
   public_price: string | null;
+  brand_name: string;
+  product_type_name: string;
   is_selected: boolean;
   notes: string;
   raw_line: string;
@@ -21,6 +23,10 @@ interface PendingLine {
   qty: number | null;
   name: string;
   rawLine: string;
+}
+
+interface ParseMyesaInvoiceOptions {
+  knownBrands?: string[];
 }
 
 const ITEM_HEADER_REGEX = /^\*+\s+([A-Z0-9-]+)\s+(\d+(?:\.\d+)?)\s+\S+\s+(.+)$/i;
@@ -49,6 +55,8 @@ function buildInvalidLine(pending: PendingLine): ParsedPreviewLine {
     unit_cost: null,
     unit_price: null,
     public_price: null,
+    brand_name: "",
+    product_type_name: "",
     is_selected: false,
     notes: "Linea sin importes detectados. Revisar captura.",
     raw_line: pending.rawLine,
@@ -56,10 +64,50 @@ function buildInvalidLine(pending: PendingLine): ParsedPreviewLine {
   };
 }
 
-export function parseMyesaInvoice(rawText: string): ParsedPreviewLine[] {
+function inferBrand(name: string, knownBrands: string[] = []): string {
+  const upper = name.toUpperCase();
+  const normalizedBrands = [...knownBrands]
+    .map((brand) => brand.trim().toUpperCase())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  for (const brand of normalizedBrands) {
+    if (upper.includes(brand)) {
+      return brand;
+    }
+  }
+
+  if (upper.includes("LS2")) {
+    return "LS2";
+  }
+  if (upper.includes("PROMOTO")) {
+    return "PROMOTO";
+  }
+  return "";
+}
+
+function inferProductType(name: string): string {
+  const upper = name.toUpperCase();
+  if (upper.includes("GUANTES")) {
+    return "GUANTES";
+  }
+  if (upper.includes("CANDADO")) {
+    return "CANDADOS";
+  }
+  if (upper.includes("CHAMARRA")) {
+    return "CHAMARRAS";
+  }
+  if (upper.includes("CASCO ABATIBLE") || upper.includes("CASCO")) {
+    return "CASCOS ABATIBLES";
+  }
+  return "";
+}
+
+export function parseMyesaInvoice(rawText: string, options: ParseMyesaInvoiceOptions = {}): ParsedPreviewLine[] {
   const lines = rawText.split(/\r?\n/);
   const parsed: ParsedPreviewLine[] = [];
   let pending: PendingLine | null = null;
+  const knownBrands = options.knownBrands ?? [];
 
   for (const source of lines) {
     const line = source.trim();
@@ -87,6 +135,8 @@ export function parseMyesaInvoice(rawText: string): ParsedPreviewLine[] {
       const unitCost = parseNumeric(amounts[1]);
       const unitPrice = unitCost * (1 + IVA_RATE);
       const publicPrice = unitPrice * PUBLIC_MARKUP;
+      const brandName = inferBrand(pending.name, knownBrands);
+      const productTypeName = inferProductType(pending.name);
 
       parsed.push({
         sku: pending.sku,
@@ -95,8 +145,10 @@ export function parseMyesaInvoice(rawText: string): ParsedPreviewLine[] {
         unit_cost: toMoney(unitCost),
         unit_price: toMoney(unitPrice),
         public_price: toMoney(publicPrice),
+        brand_name: brandName,
+        product_type_name: productTypeName,
         is_selected: true,
-        notes: "",
+        notes: brandName && productTypeName ? "" : "Completa marca/tipo antes de confirmar.",
         raw_line: `${pending.rawLine} | ${line}`,
         match_status: pending.sku ? "NEW_PRODUCT" : "INVALID",
       });

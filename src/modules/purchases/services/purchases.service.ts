@@ -3,6 +3,8 @@ import type {
   ImportBatch,
   ImportLine,
   PreviewConfirmPayload,
+  PurchaseReceipt,
+  PurchaseReceiptListResponse,
   SupplierListResponse,
   SupplierParserListResponse,
 } from "@/lib/types/purchases";
@@ -76,5 +78,17 @@ export const purchasesService = {
       "/import-batches/preview-confirm/",
       payload,
     );
+  },
+
+  getPurchaseReceipts() {
+    return httpClient.get<PurchaseReceiptListResponse>("/purchase-receipts/");
+  },
+
+  getPurchaseReceipt(receiptId: string) {
+    return httpClient.get<PurchaseReceipt>(`/purchase-receipts/${receiptId}/`);
+  },
+
+  deletePurchaseReceipt(receiptId: string) {
+    return httpClient.delete<void>(`/purchase-receipts/${receiptId}/`);
   },
 };

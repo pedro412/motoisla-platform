@@ -40,6 +40,12 @@ async function proxyRequest(request: Request, path: string[], accessToken?: stri
 }
 
 async function toNextResponse(response: Response) {
+  if (response.status === 204 || response.status === 205 || response.status === 304) {
+    return new NextResponse(null, {
+      status: response.status,
+    });
+  }
+
   const contentType = response.headers.get("content-type") ?? "application/json";
   const payloadText = await response.text();
 

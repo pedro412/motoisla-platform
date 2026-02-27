@@ -16,7 +16,7 @@ export const privateNavItems: AppNavItem[] = [
   {
     key: "purchases",
     label: "Compras",
-    href: "/purchases/imports",
+    href: "/purchases",
     icon: <LocalShippingRoundedIcon fontSize="small" />,
     module: "purchases",
     requiredRoles: ["ADMIN", "CASHIER"],
