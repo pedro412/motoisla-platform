@@ -24,6 +24,8 @@ CLAVE PRODUCTO: 46181705 CLAVE PEDIMENTO: 25 16 1767 5003910
       unit_cost: "195.80",
       unit_price: "227.13",
       public_price: "295.27",
+      brand_name: "PROMOTO",
+      product_type_name: "CANDADOS",
       is_selected: true,
       match_status: "NEW_PRODUCT",
     });
@@ -34,6 +36,8 @@ CLAVE PRODUCTO: 46181705 CLAVE PEDIMENTO: 25 16 1767 5003910
       unit_cost: "6509.97",
       unit_price: "7551.57",
       public_price: "9817.03",
+      brand_name: "LS2",
+      product_type_name: "CASCOS ABATIBLES",
     });
   });
 
@@ -48,5 +52,19 @@ CLAVE PRODUCTO: 39121903 CLAVE PEDIMENTO: 25 16 1767 5003538
     expect(result[0].match_status).toBe("INVALID");
     expect(result[0].is_selected).toBe(false);
     expect(result[0].unit_cost).toBeNull();
+    expect(result[0].brand_name).toBe("");
+    expect(result[0].product_type_name).toBe("");
+  });
+
+  it("uses known brands from catalog during inference", () => {
+    const rawText = `
+** 7101-1922 1 H87 CASCO ABATIBLE R7 RACING UNSCARRED CON LED DOBLE MICA DOT XXXL NEGRO
+931.10 931.10
+`;
+
+    const result = parseMyesaInvoice(rawText, { knownBrands: ["R7", "LS2"] });
+    expect(result).toHaveLength(1);
+    expect(result[0].brand_name).toBe("R7");
+    expect(result[0].product_type_name).toBe("CASCOS ABATIBLES");
   });
 });

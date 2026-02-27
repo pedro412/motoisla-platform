@@ -47,7 +47,8 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
 - Catálogo público con búsqueda y paginación.
 - POS create/confirm/void.
 - Reportes admin (`/metrics`, `/reports/sales`).
-- Compras por importación con parse local (`MYESA`) y confirmación backend transaccional (`preview-confirm`).
+- Compras por importación con parse local (`MYESA`), preview en cards y confirmación backend transaccional (`preview-confirm`).
+- Captura de `marca` y `tipo de producto` por línea con sugerencia automática + creación inline de taxonomy.
 - Cálculo de `precio_publico` y margen en tiempo real por línea.
 
 ### En curso / pendiente

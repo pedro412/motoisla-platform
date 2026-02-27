@@ -21,3 +21,9 @@
 - Nuevo submit único de compra al endpoint backend `POST /import-batches/preview-confirm/`.
 - Eliminación de roundtrip de parse para preview (respuesta inmediata en UI).
 - Tests unitarios nuevos del parser MYESA con caso real y fallback de líneas inválidas.
+
+## 2026-02-27 (Compras v7)
+- Preview de importación migrado de tabla a cards por producto en `/purchases/imports`.
+- Parser MYESA ahora sugiere `brand_name` y `product_type_name` por heurística.
+- Autocomplete con opción de creación inline para marcas y tipos (`/brands`, `/product-types`).
+- Confirmación envía taxonomy por línea y muestra error claro cuando backend devuelve `taxonomy_not_found`.
