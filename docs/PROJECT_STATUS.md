@@ -12,6 +12,8 @@
 - Catálogo público (`/catalog`, `/catalog/[sku]`) con búsqueda y paginación.
 - POS (`/pos`) con create/confirm/void.
 - Reportes admin (`/admin/reports`) con `/metrics` y `/reports/sales`.
+- Compras (`/purchases/imports`) con flujo parse local MYESA + preview editable + `preview-confirm` backend.
+- Cálculo de precio público con margen en tiempo real.
 - UI shell privado con navegación por rol y logout real.
 - Tests base:
   - unit/integration (Vitest)
@@ -19,7 +21,7 @@
 
 ## Pendiente prioritario
 - Fortalecer validaciones POS por campo (`fields`) y UX de errores.
-- Completar e2e de negocio (confirm/void con assertions de resultados).
+- Completar e2e de negocio (POS + compras con assertions de inventario).
 - Definir/ajustar moneda y formatos finales de operación.
 - Endurecer observabilidad frontend (logging estructurado y captura de errores).
 

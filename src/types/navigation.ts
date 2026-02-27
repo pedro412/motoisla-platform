@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import type { Role } from "@/lib/types/auth";
 
-export type PrivateModule = "pos" | "reports";
+export type PrivateModule = "pos" | "reports" | "purchases";
 
 export interface AppNavItem {
   key: string;

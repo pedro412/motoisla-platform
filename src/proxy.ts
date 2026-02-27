@@ -17,6 +17,7 @@ export function proxy(request: NextRequest) {
   const role = request.cookies.get(ROLE_COOKIE)?.value;
   const isPrivatePath =
     pathname.startsWith("/pos") ||
+    pathname.startsWith("/purchases") ||
     pathname.startsWith("/admin") ||
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/ventas");
@@ -41,5 +42,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login", "/pos/:path*", "/admin/:path*", "/dashboard/:path*", "/ventas/:path*"],
+  matcher: ["/login", "/pos/:path*", "/purchases/:path*", "/admin/:path*", "/dashboard/:path*", "/ventas/:path*"],
 };

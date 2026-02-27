@@ -6,7 +6,8 @@ import { applyAccessCookie, refreshAccessToken } from "@/lib/auth/server-session
 import { API_BASE_URL, REQUEST_TIMEOUT_MS } from "@/lib/config/env";
 
 async function proxyRequest(request: Request, path: string[], accessToken?: string) {
-  const upstreamUrl = new URL(`${API_BASE_URL}/${path.join("/")}`);
+  const normalizedPath = path.length ? `${path.join("/")}/` : "";
+  const upstreamUrl = new URL(`${API_BASE_URL}/${normalizedPath}`);
   const incomingUrl = new URL(request.url);
   upstreamUrl.search = incomingUrl.search;
 
