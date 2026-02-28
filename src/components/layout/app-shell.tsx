@@ -27,6 +27,10 @@ function getTitleFromPath(pathname: string): string {
     return "Productos";
   }
 
+  if (pathname.startsWith("/investors")) {
+    return "Inversionistas";
+  }
+
   if (pathname.startsWith("/admin/reports")) {
     return "Admin Reports";
   }

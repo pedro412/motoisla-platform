@@ -12,6 +12,7 @@ export interface ProductListItem {
   product_type_name?: string;
   is_active?: boolean;
   stock: string;
+  investor_assignable_qty?: string;
   primary_image_url: string | null;
   updated_at?: string;
   created_at?: string;

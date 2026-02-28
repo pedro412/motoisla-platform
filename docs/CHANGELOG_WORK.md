@@ -42,3 +42,11 @@
 - La venta se crea y confirma en un solo paso desde el modal de cobro; el resultado se muestra en modal success.
 - Nueva pantalla `/ventas` con tabla paginada para historial y cancelación desde UI.
 - Integración frontend con planes de comisión de tarjeta configurables desde backend.
+
+## 2026-02-28 (Inversionistas + Ledger)
+- Nuevo módulo privado `/investors` solo para `ADMIN`, con navegación dedicada y guard de ruta.
+- Alta de inversionista con `display_name` y capital inicial opcional.
+- Vista de detalle con balances (`capital`, `inventory`, `profit`), acciones de compra, depósito y retiro.
+- Modal de compra de productos con cálculo de costo neto + IVA, validación contra capital disponible y stock asignable.
+- Tabla de asignaciones ordenada con productos en stock primero, vendidos al final y estatus visual por línea.
+- Tabla de movimientos con resaltado por tipo de movimiento para identificar salidas de capital, depósitos y utilidades.
