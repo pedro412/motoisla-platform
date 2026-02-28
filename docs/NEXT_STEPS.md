@@ -4,8 +4,9 @@
 1. Agregar navegación por teclado al buscador de `Nueva Venta` (`ArrowDown`, `Enter`, `Esc`).
 2. Mostrar errores de create vs confirm de venta con resolución más guiada cuando una venta queda en `DRAFT`.
 3. Agregar filtros en `/ventas` (estatus, cajero, fecha e ID).
-4. Ajustar UX de compras para edición masiva de líneas y guardado por lote.
-5. Extender parser cliente a proveedores adicionales además de MYESA.
+4. Endurecer concurrencia del flujo `investors` (evitar sobreasignación por compras simultáneas).
+5. Ajustar UX de compras para edición masiva de líneas y guardado por lote.
+6. Extender parser cliente a proveedores adicionales además de MYESA.
 
 ## P2 - QA funcional
 1. E2E completo de:
@@ -22,7 +23,7 @@
 ## P4 - Backlog funcional (fuera de sprint)
 1. UI de gastos (`expenses`).
 2. UI de apartados (`layaway`).
-3. UI de inversionistas/ledger (`investors`).
+3. Reinversión y filtros avanzados dentro de `investors`.
 4. Multipago POS.
 5. Carga de imagen por línea en preview de compras.
 6. Deprecar en backend el parse remoto legacy cuando el flujo local esté estabilizado.

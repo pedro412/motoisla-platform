@@ -19,6 +19,7 @@
 - Compras (`/purchases/imports`) con flujo parse local MYESA + preview editable + `preview-confirm` backend.
 - Cálculo de precio público con margen en tiempo real.
 - Productos (`/products`) con listado interno, filtros, detalle, edición, borrado y movimientos de inventario por producto.
+- Inversionistas (`/investors`) con listado admin, alta operativa con capital inicial opcional, detalle, compra de productos, depósito/retiro y visualización de ledger.
 - UI shell privado con navegación por rol y logout real.
 - Tests base:
   - unit/integration (Vitest)
@@ -27,6 +28,7 @@
 ## Pendiente prioritario
 - Fortalecer validaciones POS por campo (`fields`) y UX de errores finos en modal de cobro.
 - Completar e2e de negocio (POS + compras con assertions de inventario).
+- Endurecer concurrencia/locking de compra de inversionistas para evitar carreras de asignación simultánea.
 - Definir/ajustar moneda y formatos finales de operación.
 - Endurecer observabilidad frontend (logging estructurado y captura de errores).
 
