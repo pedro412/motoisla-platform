@@ -81,3 +81,5 @@ Registrado:
 - Seguimiento operativo pendiente fuera de desarrollo backend:
   - validar CSRF/CORS con dominios reales en staging/prod
   - capturar baseline de performance p95 con tráfico real
+- En frontend, la convención reciente de UI para vistas detalle es: breadcrumb superior + back button a la izquierda + acción principal a la derecha; no implica cambios de API.
+- En imports, el cliente ahora presenta `unit_price` como `Costo + IVA` para evitar confusión semántica, pero el backend sigue recibiendo los mismos campos.

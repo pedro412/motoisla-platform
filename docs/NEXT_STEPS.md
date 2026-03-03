@@ -64,3 +64,4 @@ Este backlog mantiene el orden del plan original y deja tareas ejecutables para 
 - No romper contratos actuales de API (`code/detail/fields`, paginación DRF).
 - Mantener reglas de negocio ya cerradas en fases 3-6.
 - Antes de cambios grandes, actualizar `docs/PLAN_STATUS.md` y este backlog.
+- Recordar que cambios de UI del cliente (breadcrumbs, headers de detalle, etiquetas visuales) no requieren cambios de contrato salvo que se modifique el payload.
