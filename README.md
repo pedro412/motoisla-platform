@@ -160,6 +160,7 @@ Nota: al iniciar el contenedor `web`, los seeds `seed_suppliers_parsers` y `seed
   - cortes/márgenes ejecutivos adicionales.
 - Frontend:
   - consumir catálogo público y flujos POS/admin con contratos actuales.
+  - cambios visuales del cliente (breadcrumbs, headers de detalle, surfaces dark/slate) no cambian el contrato API.
 
 ## Notas recientes
 - `Product` ya expone `cost_price` además de `default_price`.
@@ -171,6 +172,7 @@ Nota: al iniciar el contenedor `web`, los seeds `seed_suppliers_parsers` y `seed
 - `Layaway` ahora soporta cliente unificado por teléfono, líneas múltiples, múltiples abonos, extensión y estados `SETTLED` / `REFUNDED`.
 - `Expense` ahora soporta plantillas mensuales (`FixedExpenseTemplate`), generación idempotente y estados `PENDING` / `PAID` / `CANCELLED`.
 - `GET /api/v1/reports/sales/` ahora expone `investor_metrics` e `inventory_snapshot` con buckets de inventario propio vs inventario fondeado por inversionistas.
+- El flujo frontend de importación puede mostrar `unit_price` como `Costo + IVA`; backend mantiene el mismo payload (`unit_cost`, `unit_price`, `public_price`) sin cambios de contrato.
 
 ## Convenciones
 - Roles: `ADMIN`, `CASHIER`, `INVESTOR`.
