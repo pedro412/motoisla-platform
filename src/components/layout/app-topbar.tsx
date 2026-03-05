@@ -41,9 +41,9 @@ export function AppTopbar({ title, onOpenMobileMenu }: AppTopbarProps) {
       color="transparent"
       elevation={0}
       sx={{
-        borderBottom: 1,
-        borderColor: "divider",
-        backdropFilter: "blur(4px)",
+        backgroundColor: "rgba(15, 23, 42, 0.85)",
+        backdropFilter: "blur(12px)",
+        borderBottom: "1px solid rgba(148, 163, 184, 0.08)",
       }}
     >
       <Toolbar sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}>
