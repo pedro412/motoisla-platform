@@ -49,6 +49,42 @@ interface ProductPreviewCardProps {
   onCreateProductType: (lineId: string, name: string) => Promise<void>;
 }
 
+function getMatchStatusVisual(status: EditableImportLine["match_status"]) {
+  if (status === "MATCHED_PRODUCT") {
+    return {
+      label: "COINCIDE",
+      color: "#86efac",
+      backgroundColor: "rgba(16, 185, 129, 0.16)",
+      borderColor: "rgba(16, 185, 129, 0.32)",
+    };
+  }
+
+  if (status === "NEW_PRODUCT") {
+    return {
+      label: "NUEVO",
+      color: "#fde68a",
+      backgroundColor: "rgba(245, 158, 11, 0.16)",
+      borderColor: "rgba(245, 158, 11, 0.32)",
+    };
+  }
+
+  if (status === "AMBIGUOUS") {
+    return {
+      label: "AMBIGUO",
+      color: "#bfdbfe",
+      backgroundColor: "rgba(59, 130, 246, 0.16)",
+      borderColor: "rgba(59, 130, 246, 0.32)",
+    };
+  }
+
+  return {
+    label: "INVÁLIDO",
+    color: "#fecaca",
+    backgroundColor: "rgba(239, 68, 68, 0.16)",
+    borderColor: "rgba(239, 68, 68, 0.32)",
+  };
+}
+
 const darkPanelSx = {
   p: { xs: 2.5, md: 3 },
   borderRadius: 4,
@@ -239,6 +275,7 @@ const ProductPreviewCard = memo(function ProductPreviewCard({
 
   const costWithTax = rowCostWithTax(draft);
   const rowTotal = parseAmount(draft.qty) * parseAmount(draft.unit_cost);
+  const matchVisual = getMatchStatusVisual(draft.match_status);
 
   return (
     <Card
@@ -305,12 +342,12 @@ const ProductPreviewCard = memo(function ProductPreviewCard({
               />
               <Chip
                 size="small"
-                label={draft.match_status}
+                label={matchVisual.label}
                 sx={{
                   fontWeight: 800,
-                  color: "#f8fafc",
-                  backgroundColor: "rgba(15, 23, 42, 0.34)",
-                  border: "1px solid rgba(148, 163, 184, 0.16)",
+                  color: matchVisual.color,
+                  backgroundColor: matchVisual.backgroundColor,
+                  border: `1px solid ${matchVisual.borderColor}`,
                 }}
               />
             </Stack>
