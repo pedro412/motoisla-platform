@@ -56,7 +56,27 @@ Este backlog mantiene el orden del plan original y deja tareas ejecutables para 
 1. Exponer reinversión y filtros más finos de ledger para frontend.
 2. Evaluar locking explícito por producto/asignación para compras concurrentes.
 
-## Prioridad 9 — Clientes / lealtad (backlog)
+## Prioridad 9 — Integridad del ledger: inmutabilidad y reconciliación ✅
+
+> Objetivo: que el ledger sea la única fuente de verdad. Cualquier balance o cantidad derivada
+> siempre debe poder recalcularse desde cero sumando entradas del ledger. Sin campos cacheados
+> que puedan desincronizarse silenciosamente.
+
+1. ✅ **Atomicidad en `profitability.py`**: `apply_sale_profitability` y `revert_sale_profitability` decoradas con `@transaction.atomic` — savepoint automático cuando se llaman desde `confirm`/`void`; protección propia si se llaman en solitario.
+2. ✅ **Inmutabilidad de `LedgerEntry`**: `save()` lanza `ValidationError` si `_state.adding` es `False`. Ningún código puede editar entradas existentes; solo se permiten entradas compensatorias.
+3. ✅ **Comando `reconcile_ledger`** (`python manage.py reconcile_ledger`): verifica balances del ledger por inversionista y `qty_sold` de cada `InvestorAssignment` contra `SaleLineProfitability`. Solo lectura, exit code 0 = OK / 1 = mismatches. Usable en CI/monitoring/cron.
+4. ✅ **Unit tests de lógica pura** (`ProfitabilityUnitTests`): `allocate_proportionally`, `_build_line_chunks` (STORE, INVESTOR, mixto, FIFO multi-inversor), split 50/50, cero profit.
+5. ✅ **Chaos tests** (`ProfitabilityChaosTests`): rollback de apply/revert en fallo DB, validación de inmutabilidad de ledger entry.
+
+## Prioridad 10 — Cobertura de tests: lógica financiera crítica ✅
+
+1. ✅ Unit tests de `allocate_proportionally` y `_build_line_chunks` en `ProfitabilityUnitTests`.
+2. ✅ Casos borde cubiertos: chunks STORE + múltiples inversionistas FIFO, venta con profit cero, rollback parcial.
+3. ✅ Chaos tests de `apply_sale_profitability` y `revert_sale_profitability`.
+4. ✅ Test de inmutabilidad de `LedgerEntry`.
+5. ✅ Integration test de ciclo completo confirmar→anular ya existía; chaos tests validan el rollback explícito.
+
+## Prioridad 10 — Clientes / lealtad (backlog)
 1. Diseñar programa de lealtad o descuentos basado en historial de compras del `Customer`.
 2. Definir reglas de elegibilidad y trazabilidad para promociones por recurrencia.
 
