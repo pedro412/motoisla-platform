@@ -51,4 +51,8 @@ export const investorsService = {
   withdrawCapital(id: string, payload: InvestorCapitalOperationPayload) {
     return httpClient.post<InvestorCapitalOperationPayload, InvestorLedgerEntry>(`/investors/${id}/withdraw/`, payload);
   },
+
+  reinvestProfit(id: string, payload: InvestorCapitalOperationPayload) {
+    return httpClient.post<InvestorCapitalOperationPayload, InvestorLedgerEntry>(`/investors/${id}/reinvest/`, payload);
+  },
 };

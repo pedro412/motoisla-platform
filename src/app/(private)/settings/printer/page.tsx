@@ -32,24 +32,22 @@ export default function PrinterSettingsPage() {
   const { charWidth, storeAddress, storePhone, status, errorMessage, setCharWidth, setStoreAddress, setStorePhone, setStatus } =
     usePrinterStore();
 
-  const [supported, setSupported] = useState(false);
+  // Lazy initializers avoid setState calls inside the effect body
+  const [supported] = useState(() => isWebUsbSupported());
   const [device, setDevice] = useState<USBDevice | null>(null);
-  const [detecting, setDetecting] = useState(true);
+  const [detecting, setDetecting] = useState(supported);
 
-  // Detect support and already-authorized devices on mount
   useEffect(() => {
-    if (!isWebUsbSupported()) {
-      setDetecting(false);
-      return;
-    }
-    setSupported(true);
+    if (!supported) return;
 
+    let cancelled = false;
     getAuthorizedDevices().then((devices) => {
-      setDevice(devices[0] ?? null);
-      setDetecting(false);
+      if (!cancelled) {
+        setDevice(devices[0] ?? null);
+        setDetecting(false);
+      }
     });
 
-    // Listen for connect/disconnect events
     function onConnect(event: USBConnectionEvent) {
       setDevice(event.device);
     }
@@ -60,10 +58,11 @@ export default function PrinterSettingsPage() {
     navigator.usb.addEventListener("disconnect", onDisconnect);
 
     return () => {
+      cancelled = true;
       navigator.usb.removeEventListener("connect", onConnect);
       navigator.usb.removeEventListener("disconnect", onDisconnect);
     };
-  }, []);
+  }, [supported]);
 
   async function handleConnect() {
     setStatus("idle");

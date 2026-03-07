@@ -208,6 +208,10 @@ export function InvestorDetailPage() {
   const [capitalAmount, setCapitalAmount] = useState("");
   const [capitalNote, setCapitalNote] = useState("");
   const [capitalError, setCapitalError] = useState<string | null>(null);
+  const [reinvestOpen, setReinvestOpen] = useState(false);
+  const [reinvestAmount, setReinvestAmount] = useState("");
+  const [reinvestNote, setReinvestNote] = useState("");
+  const [reinvestError, setReinvestError] = useState<string | null>(null);
   const debouncedProductSearch = useDebouncedValue(productSearch.trim(), 250);
 
   const investorQuery = useQuery({
@@ -269,6 +273,30 @@ export function InvestorDetailPage() {
     },
     onError: (error) => {
       setPurchaseError(getErrorMessage(error, "No fue posible completar la compra."));
+    },
+  });
+
+  const reinvestMutation = useMutation({
+    mutationFn: () => {
+      if (!investorId) throw new Error("Investor not found");
+      return investorsService.reinvestProfit(investorId, {
+        amount: reinvestAmount.trim(),
+        note: reinvestNote.trim() || undefined,
+      });
+    },
+    onSuccess: async () => {
+      setReinvestOpen(false);
+      setReinvestAmount("");
+      setReinvestNote("");
+      setReinvestError(null);
+      setLedgerPage(1);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["investor", investorId] }),
+        queryClient.invalidateQueries({ queryKey: ["investor-ledger", investorId] }),
+      ]);
+    },
+    onError: (error) => {
+      setReinvestError(getErrorMessage(error, "No fue posible registrar la reinversión."));
     },
   });
 
@@ -334,6 +362,34 @@ export function InvestorDetailPage() {
   const baseError = investorQuery.isError ? getErrorMessage(investorQuery.error, "No fue posible cargar el inversionista.") : null;
   const assignmentsError = assignmentsQuery.isError ? getErrorMessage(assignmentsQuery.error, "No fue posible cargar las asignaciones.") : null;
   const ledgerError = ledgerQuery.isError ? getErrorMessage(ledgerQuery.error, "No fue posible cargar el ledger.") : null;
+
+  function closeReinvestDialog() {
+    if (reinvestMutation.isPending) return;
+    setReinvestOpen(false);
+    setReinvestAmount("");
+    setReinvestNote("");
+    setReinvestError(null);
+  }
+
+  async function submitReinvest() {
+    const amount = Number(reinvestAmount);
+    const profitAvailable = Number(investor?.balances.profit ?? 0);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setReinvestError("Debes capturar un monto mayor a 0.");
+      return;
+    }
+    if (amount > profitAvailable) {
+      setReinvestError("El monto no puede exceder la utilidad disponible.");
+      return;
+    }
+    setReinvestError(null);
+    try {
+      await reinvestMutation.mutateAsync();
+    } catch {
+      return;
+    }
+  }
 
   function closePurchaseDialog() {
     if (purchaseMutation.isPending) {
@@ -529,6 +585,14 @@ export function InvestorDetailPage() {
         </Button>
         <Button variant="outlined" color="error" onClick={() => setCapitalMode("withdraw")}>
           Retirar capital
+        </Button>
+        <Button
+          variant="outlined"
+          color="success"
+          onClick={() => setReinvestOpen(true)}
+          disabled={Number(investor.balances.profit) <= 0}
+        >
+          Reinvertir utilidad
         </Button>
       </Stack>
 
@@ -835,6 +899,36 @@ export function InvestorDetailPage() {
           <Button onClick={closeCapitalDialog}>Cancelar</Button>
           <Button variant="contained" onClick={submitCapitalOperation} disabled={capitalMutation.isPending}>
             {capitalMutation.isPending ? "Guardando..." : "Guardar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={reinvestOpen} onClose={closeReinvestDialog} fullWidth maxWidth="sm">
+        <DialogTitle>Reinvertir utilidad</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {reinvestError ? <Alert severity="error">{reinvestError}</Alert> : null}
+            <Typography color="text.secondary" variant="body2">
+              Mueve utilidad disponible a capital líquido del inversionista para que pueda usarse en nuevas compras de inventario.
+            </Typography>
+            <MoneyInput label="Monto a reinvertir" value={reinvestAmount} onChange={setReinvestAmount} fullWidth />
+            <TextField
+              label="Nota (opcional)"
+              value={reinvestNote}
+              onChange={(event) => setReinvestNote(event.target.value)}
+              fullWidth
+              multiline
+              minRows={2}
+            />
+            <Typography color="text.secondary" variant="body2">
+              Utilidad disponible: <strong>{formatCurrency(investor.balances.profit)}</strong>
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeReinvestDialog}>Cancelar</Button>
+          <Button variant="contained" color="success" onClick={submitReinvest} disabled={reinvestMutation.isPending}>
+            {reinvestMutation.isPending ? "Reinvirtiendo..." : "Confirmar reinversión"}
           </Button>
         </DialogActions>
       </Dialog>
