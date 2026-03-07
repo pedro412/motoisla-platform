@@ -25,9 +25,13 @@ export const salesService = {
     });
   },
 
-  listSales(params?: { page?: number }) {
+  listSales(params?: { page?: number; date_from?: string; date_to?: string; status?: string; cashier?: string }) {
     return httpClient.get<PaginatedResponse<SaleHistoryItem>>("/sales/", {
       page: params?.page,
+      date_from: params?.date_from || undefined,
+      date_to: params?.date_to || undefined,
+      status: params?.status || undefined,
+      cashier: params?.cashier || undefined,
     });
   },
 
