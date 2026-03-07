@@ -1391,3 +1391,85 @@ class ProfitabilityChaosTests(TestCase):
         entry.note = "tampered"
         with self.assertRaises(DjangoValidationError):
             entry.save()
+
+
+class CreateAndConfirmTests(APITestCase):
+    """Integration tests for POST /api/v1/sales/create-and-confirm/."""
+
+    def setUp(self):
+        from apps.catalog.models import Product
+        from apps.inventory.models import InventoryMovement
+
+        User = get_user_model()
+        self.admin = User.objects.create_user(username="cac_admin", password="admin123", role="ADMIN")
+        self.cashier = User.objects.create_user(username="cac_cashier", password="cashier123", role="CASHIER")
+        self.product = Product.objects.create(sku="CAC-001", name="Test Helmet", default_price=Decimal("100.00"))
+        InventoryMovement.objects.create(
+            product=self.product,
+            movement_type="INBOUND",
+            quantity_delta=Decimal("10"),
+            reference_type="seed",
+            reference_id="seed",
+            note="seed",
+            created_by=self.admin,
+        )
+
+    def _auth(self, username, password):
+        token = self.client.post("/api/v1/auth/token/", {"username": username, "password": password}, format="json").data["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def _payload(self, qty="2.00", price="100.00"):
+        amount = (Decimal(qty) * Decimal(price)).quantize(Decimal("0.01"))
+        return {
+            "lines": [{"product": str(self.product.id), "qty": qty, "unit_price": price, "unit_cost": "40.00", "discount_pct": "0.00"}],
+            "payments": [{"method": "CASH", "amount": str(amount)}],
+        }
+
+    def test_creates_confirmed_sale_in_one_request(self):
+        self._auth("cac_cashier", "cashier123")
+        resp = self.client.post("/api/v1/sales/create-and-confirm/", self._payload(), format="json")
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data["status"], "CONFIRMED")
+        self.assertIsNotNone(resp.data["confirmed_at"])
+
+    def test_no_draft_sale_left_after_success(self):
+        self._auth("cac_cashier", "cashier123")
+        self.client.post("/api/v1/sales/create-and-confirm/", self._payload(), format="json")
+        self.assertFalse(Sale.objects.filter(cashier=self.cashier, status="DRAFT").exists())
+
+    def test_inventory_decremented(self):
+        self._auth("cac_cashier", "cashier123")
+        from django.db.models import Sum
+        from apps.inventory.models import InventoryMovement as IM
+
+        before = IM.objects.filter(product=self.product).aggregate(t=Sum("quantity_delta"))["t"]
+        self.client.post("/api/v1/sales/create-and-confirm/", self._payload(qty="3.00", price="100.00"), format="json")
+        after = IM.objects.filter(product=self.product).aggregate(t=Sum("quantity_delta"))["t"]
+        self.assertEqual(before - after, Decimal("3.00"))
+
+    def test_rollback_on_profitability_failure_leaves_no_sale(self):
+        """If profitability engine fails, the whole transaction rolls back — no sale persists."""
+        self._auth("cac_cashier", "cashier123")
+        before_count = Sale.objects.count()
+        self.client.raise_request_exception = False
+        with mock.patch("apps.sales.views.apply_sale_profitability", side_effect=Exception("simulated failure")):
+            resp = self.client.post("/api/v1/sales/create-and-confirm/", self._payload(), format="json")
+        self.client.raise_request_exception = True
+        self.assertEqual(resp.status_code, 500)
+        self.assertEqual(Sale.objects.count(), before_count)
+
+    def test_invalid_payment_sum_rejected(self):
+        self._auth("cac_cashier", "cashier123")
+        payload = {
+            "lines": [{"product": str(self.product.id), "qty": "1.00", "unit_price": "100.00", "unit_cost": "40.00", "discount_pct": "0.00"}],
+            "payments": [{"method": "CASH", "amount": "50.00"}],  # wrong amount
+        }
+        resp = self.client.post("/api/v1/sales/create-and-confirm/", payload, format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(Sale.objects.count(), 0)
+
+    def test_admin_can_also_use_endpoint(self):
+        self._auth("cac_admin", "admin123")
+        resp = self.client.post("/api/v1/sales/create-and-confirm/", self._payload(), format="json")
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data["status"], "CONFIRMED")

@@ -79,6 +79,7 @@ class SaleViewSet(viewsets.ModelViewSet):
         "create": ["sales.create"],
         "confirm": ["sales.confirm"],
         "void": ["sales.void.own_window"],
+        "create_and_confirm": ["sales.create", "sales.confirm"],
     }
 
     def get_queryset(self):
@@ -112,6 +113,54 @@ class SaleViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             return SaleListSerializer
         return SaleSerializer
+
+    @action(detail=False, methods=["post"], url_path="create-and-confirm")
+    def create_and_confirm(self, request):
+        """Crea y confirma una venta en una sola transacción atómica.
+        Elimina el riesgo de ventas en borrador huérfanas cuando el segundo
+        request de confirmación falla en el flujo de dos pasos."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            with transaction.atomic():
+                sale = serializer.save()
+                self._apply_customer_credit_if_needed(sale)
+                for line in sale.lines.all():
+                    InventoryMovement.objects.create(
+                        product=line.product,
+                        movement_type=MovementType.OUTBOUND,
+                        quantity_delta=-line.qty,
+                        reference_type="sale_confirm",
+                        reference_id=str(sale.id),
+                        note="Sale confirmation",
+                        created_by=request.user,
+                    )
+                apply_sale_profitability(sale=sale)
+
+                sale.status = SaleStatus.CONFIRMED
+                sale.confirmed_at = timezone.now()
+                sale.save(update_fields=["status", "confirmed_at"])
+
+                if sale.discount_amount > 0:
+                    record_audit(
+                        actor=request.user,
+                        action="sale.discount",
+                        entity_type="sale",
+                        entity_id=sale.id,
+                        payload={"discount_amount": str(sale.discount_amount)},
+                    )
+                record_audit(
+                    actor=request.user,
+                    action="sale.confirm",
+                    entity_type="sale",
+                    entity_id=sale.id,
+                    payload={"total": str(sale.total)},
+                )
+        except ValueError as exc:
+            return Response({"code": "invalid_payment", "detail": str(exc), "fields": {}}, status=400)
+
+        return Response(self.get_serializer(sale).data, status=201)
 
     @action(detail=True, methods=["post"])
     def confirm(self, request, pk=None):
