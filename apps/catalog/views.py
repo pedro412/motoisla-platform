@@ -34,9 +34,16 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = with_inventory_metrics(Product.objects.all()).prefetch_related("images")
+
+        include_inactive = self.request.query_params.get("include_inactive", "").strip().lower()
+        if include_inactive not in {"1", "true", "yes"}:
+            queryset = queryset.filter(is_active=True)
+
         query = self.request.query_params.get("q")
         if query:
-            queryset = queryset.filter(Q(name__icontains=query) | Q(sku__icontains=query))
+            terms = query.split()
+            for term in terms:
+                queryset = queryset.filter(Q(name__icontains=term) | Q(sku__icontains=term))
 
         brand_id = self.request.query_params.get("brand")
         if brand_id:

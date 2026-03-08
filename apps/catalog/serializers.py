@@ -4,10 +4,15 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import DecimalField, ExpressionWrapper, F, Sum, Value
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.catalog.models import Brand, Product, ProductImage, ProductType
 from apps.inventory.models import InventoryMovement, MovementType
+from apps.purchases.models import PurchaseReceipt, PurchaseReceiptLine, ReceiptStatus
+from apps.suppliers.models import Supplier
+
+IVA_RATE = Decimal("0.16")
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
@@ -92,6 +97,49 @@ class ProductSerializer(serializers.ModelSerializer):
             assignable = Decimal("0.00")
         return f"{assignable:.2f}"
 
+    @staticmethod
+    def _get_direct_supplier():
+        supplier, _ = Supplier.objects.get_or_create(
+            code="DIRECT",
+            defaults={"name": "Compra directa"},
+        )
+        return supplier
+
+    def _create_purchase_receipt(self, product: Product, quantity_delta, reason: str, reference_type: str):
+        """Create a PurchaseReceipt + INBOUND movement for positive stock additions with cost."""
+        user = self.context["request"].user
+        unit_cost = product.cost_price
+        subtotal = (unit_cost * quantity_delta).quantize(Decimal("0.01"))
+        tax = (subtotal * IVA_RATE).quantize(Decimal("0.01"))
+        total = subtotal + tax
+
+        receipt = PurchaseReceipt.objects.create(
+            supplier=self._get_direct_supplier(),
+            status=ReceiptStatus.POSTED,
+            subtotal=subtotal,
+            tax=tax,
+            total=total,
+            created_by=user,
+            posted_at=timezone.now(),
+        )
+
+        PurchaseReceiptLine.objects.create(
+            receipt=receipt,
+            product=product,
+            qty=quantity_delta,
+            unit_cost=unit_cost,
+        )
+
+        InventoryMovement.objects.create(
+            product=product,
+            movement_type=MovementType.INBOUND,
+            quantity_delta=quantity_delta,
+            reference_type=reference_type,
+            reference_id=str(receipt.id),
+            note=reason.strip(),
+            created_by=user,
+        )
+
     def _create_stock_movement(self, product: Product, target_stock, reason: str, reference_type: str):
         current_stock = InventoryMovement.current_stock(product.id)
         quantity_delta = target_stock - current_stock
@@ -102,6 +150,12 @@ class ProductSerializer(serializers.ModelSerializer):
         if not reason.strip():
             raise serializers.ValidationError({"stock_adjust_reason": "La razón del ajuste de stock es obligatoria."})
 
+        # Positive delta with cost_price → create PurchaseReceipt so it counts in purchase metrics
+        if quantity_delta > 0 and product.cost_price is not None and product.cost_price > 0:
+            self._create_purchase_receipt(product, quantity_delta, reason, reference_type)
+            return
+
+        # Negative delta or no cost → plain adjustment (no purchase receipt)
         InventoryMovement.objects.create(
             product=product,
             movement_type=MovementType.ADJUSTMENT,
