@@ -72,13 +72,35 @@ class InvestorViewSet(viewsets.ModelViewSet):
     def ledger(self, request, pk=None):
         investor = self.get_object()
         entries = LedgerEntry.objects.filter(investor=investor).order_by("-created_at")
+
+        entry_type = request.query_params.get("entry_type")
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+
+        valid_types = {lt.value for lt in LedgerEntryType}
+        if entry_type and entry_type in valid_types:
+            entries = entries.filter(entry_type=entry_type)
+        if date_from:
+            entries = entries.filter(created_at__date__gte=date_from)
+        if date_to:
+            entries = entries.filter(created_at__date__lte=date_to)
+
+        zero = Value(Decimal("0.00"), output_field=DecimalField())
+        totals = entries.aggregate(
+            capital_total=Coalesce(Sum("capital_delta"), zero),
+            inventory_total=Coalesce(Sum("inventory_delta"), zero),
+            profit_total=Coalesce(Sum("profit_delta"), zero),
+        )
+
         page = self.paginate_queryset(entries)
         if page is not None:
             serializer = LedgerEntrySerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            response = self.get_paginated_response(serializer.data)
+            response.data["totals"] = totals
+            return response
 
         serializer = LedgerEntrySerializer(entries, many=True)
-        return Response({"count": len(serializer.data), "next": None, "previous": None, "results": serializer.data})
+        return Response({"count": len(serializer.data), "next": None, "previous": None, "results": serializer.data, "totals": totals})
 
     @action(detail=True, methods=["post"])
     def deposit(self, request, pk=None):
