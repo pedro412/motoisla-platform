@@ -116,6 +116,7 @@ Key points:
 | `/ventas/[id]` | Sale detail |
 | `/products` | Product catalog list |
 | `/products/[id]` | Product detail + stock movements |
+| `/products/new` | Create product (admin only) |
 | `/products/[id]/edit` | Edit product |
 | `/purchases` | Purchases overview |
 | `/purchases/receipts` | Purchase receipts list |
