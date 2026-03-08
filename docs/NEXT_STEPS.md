@@ -33,7 +33,7 @@ Este backlog mantiene el orden del plan original y deja tareas ejecutables para 
 ## Prioridad 4 — Reportería financiera (siguiente iteración)
 1. Consolidar reportería exacta de consumo por asignación/venta para inversionistas (fase 2).
 2. Evaluar tabla explícita de consumos por venta para eliminar inferencias en métricas.
-3. Exponer comparativos entre periodos para utilidad tienda vs inversionistas.
+3. ✅ Exponer filtros de período y totales agregados en `GET /investors/{id}/ledger/` (`entry_type`, `date_from`, `date_to`, `totals`).
 
 ## Prioridad 5 — Soporte frontend catalog-only
 1. ✅ Endpoint de catálogo público readonly (`/api/v1/public/catalog/`, `/api/v1/public/catalog/{sku}/`).
@@ -47,14 +47,15 @@ Este backlog mantiene el orden del plan original y deja tareas ejecutables para 
 2. Capturar baseline de performance (latencia p95 + query plans) con tráfico real.
 3. Endurecer concurrencia en compras de inversionistas para evitar sobreasignación bajo requests simultáneos.
 
-## Prioridad 7 — Ventas (siguiente iteración UX/operación)
-1. Agregar filtros server-side para `GET /api/v1/sales/` (estatus, cajero, fecha, id).
-2. Evaluar endpoint de cobro atómico (`create + confirm`) para evitar drafts huérfanos cuando falla la confirmación.
+## Prioridad 7 — Ventas (siguiente iteración UX/operación) ✅
+1. ✅ Filtros server-side para `GET /api/v1/sales/` — `status`, `cashier`, `date_from`, `date_to`. UI en `/ventas` con patrón draft/applied.
+2. ✅ Endpoint atómico `POST /api/v1/sales/create-and-confirm/` — crea y confirma en una sola transacción. POS actualizado para usarlo.
 3. Exponer reportería de comisiones de tarjeta para utilidad operativa y conciliación.
 
-## Prioridad 8 — Inversionistas (siguiente iteración operativa)
-1. Exponer reinversión y filtros más finos de ledger para frontend.
-2. Evaluar locking explícito por producto/asignación para compras concurrentes.
+## Prioridad 8 — Inversionistas (siguiente iteración operativa) ✅
+1. ✅ Reinversión de utilidades — `POST /investors/{id}/reinvest/` + botón "Reinvertir utilidad" en UI (bloqueado cuando profit ≤ 0).
+2. ✅ Filtros de ledger — `entry_type`, `date_from`, `date_to` + totales de período en UI.
+3. Evaluar locking explícito por producto/asignación para compras concurrentes.
 
 ## Prioridad 9 — Integridad del ledger: inmutabilidad y reconciliación ✅
 

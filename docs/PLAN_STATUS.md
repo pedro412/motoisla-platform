@@ -43,6 +43,8 @@ Estado: ✅ Cerrada (core)
   - catálogo de planes de comisión de tarjeta configurable.
   - snapshot de comisión por pago para utilidad/ledger histórico.
   - `GET /sales/` enriquecido para historial UI (`cashier_username`, `void_reason`, `can_void`).
+  - filtros server-side en `GET /sales/`: `status`, `cashier`, `date_from`, `date_to`.
+  - `POST /sales/create-and-confirm/` — creación y confirmación atómica en una sola transacción (elimina drafts huérfanos).
 
 ### Fase 5 — Apartados y Saldo a Favor
 Estado: ✅ Cerrada
@@ -69,6 +71,8 @@ Estado: ✅ Cerrada (núcleo)
   - compra transaccional en `POST /investors/{id}/purchases/`
   - `GET /investors/{id}/ledger/` con paginación estándar
   - `investor_assignable_qty` expuesto en productos para bloquear asignaciones duplicadas
+  - `POST /investors/{id}/reinvest/` — reinversión de utilidad acumulada en capital
+  - `GET /investors/{id}/ledger/` acepta `entry_type`, `date_from`, `date_to`; respuesta incluye `totals` con deltas agregados del período
 
 ### Fase 7 — Auditoría + Métricas base
 Estado: ✅ Cerrada (scope backend)
