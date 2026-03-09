@@ -91,7 +91,10 @@ Nota: al iniciar el contenedor `web`, los seeds `seed_suppliers_parsers` y `seed
   - `GET/POST /api/v1/products/`
   - `GET/PATCH/DELETE /api/v1/products/{id}/`
   - filtros soportados en `GET /api/v1/products/`: `q`, `brand`, `product_type`, `has_stock`
-  - `GET/POST /api/v1/product-images/`
+  - `POST /api/v1/media/uploads/presign/`
+  - `POST /api/v1/media/uploads/complete/`
+  - `GET/POST /api/v1/products/{id}/images/`
+  - `PATCH/DELETE /api/v1/products/{id}/images/{image_id}/`
   - `GET/POST /api/v1/brands/`
   - `GET/POST /api/v1/product-types/`
 - Catálogo público readonly:
@@ -182,6 +185,7 @@ Nota: al iniciar el contenedor `web`, los seeds `seed_suppliers_parsers` y `seed
 
 ## Documentación extendida
 - Índice general: `docs/README.md`
+- Checklist R2 prod: `docs/R2_PRODUCTION_CHECKLIST.md`
 - Contexto para agentes: `docs/AGENT_CONTEXT.md`
 - Estado contra plan maestro: `docs/PLAN_STATUS.md`
 - Backlog ordenado: `docs/NEXT_STEPS.md`

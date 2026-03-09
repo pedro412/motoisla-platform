@@ -10,10 +10,11 @@ Este directorio centraliza el contexto operativo para humanos y agentes de IA.
 - `docs/RUNBOOK.md`: runbook de incidencias operativas.
 - `docs/API_QA_COLLECTION.http`: colección de requests para QA/operación.
 - `docs/DOD_V1.md`: Definition of Done backend v1.
+- `docs/R2_PRODUCTION_CHECKLIST.md`: checklist para configurar y operar media en Cloudflare R2 (staging/prod).
 
 ## Fuente de verdad de negocio
 - `plan-maestro-v1.md`
 - `plan.txt`
 
 ## Última actualización
-- 2026-02-26
+- 2026-03-09
