@@ -7,7 +7,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.catalog.models import Brand, Product, ProductImage, ProductType
+from apps.catalog.models import Brand, MediaAsset, MediaAssetStatus, Product, ProductImage, ProductType
 from apps.inventory.models import InventoryMovement, MovementType
 from apps.purchases.models import PurchaseReceipt, PurchaseReceiptLine, ReceiptStatus
 from apps.suppliers.models import Supplier
@@ -15,17 +15,100 @@ from apps.suppliers.models import Supplier
 IVA_RATE = Decimal("0.16")
 
 
+class MediaAssetSerializer(serializers.ModelSerializer):
+    original_url = serializers.CharField(source="public_url_original", read_only=True)
+    thumb_url = serializers.CharField(source="public_url_thumb", read_only=True)
+
+    class Meta:
+        model = MediaAsset
+        fields = [
+            "id",
+            "provider",
+            "status",
+            "original_url",
+            "thumb_url",
+            "mime_type",
+            "width",
+            "height",
+            "size_bytes",
+        ]
+        read_only_fields = fields
+
+
 class ProductImageSerializer(serializers.ModelSerializer):
+    asset_id = serializers.UUIDField(source="asset.id", read_only=True)
+    original_url = serializers.CharField(source="asset.public_url_original", read_only=True)
+    thumb_url = serializers.CharField(source="asset.public_url_thumb", read_only=True)
+    width = serializers.IntegerField(source="asset.width", read_only=True)
+    height = serializers.IntegerField(source="asset.height", read_only=True)
+    mime_type = serializers.CharField(source="asset.mime_type", read_only=True)
+
     class Meta:
         model = ProductImage
-        fields = ["id", "product", "image_url", "is_primary", "created_at"]
-        read_only_fields = ["id", "created_at"]
+        fields = [
+            "id",
+            "asset_id",
+            "is_primary",
+            "sort_order",
+            "original_url",
+            "thumb_url",
+            "width",
+            "height",
+            "mime_type",
+        ]
+        read_only_fields = fields
+
+
+class ProductImageAttachSerializer(serializers.Serializer):
+    asset_id = serializers.UUIDField()
+    is_primary = serializers.BooleanField(required=False)
+    sort_order = serializers.IntegerField(required=False, min_value=0)
+
+    def validate_asset_id(self, value):
+        try:
+            asset = MediaAsset.objects.get(id=value)
+        except MediaAsset.DoesNotExist as exc:
+            raise serializers.ValidationError("El asset no existe.") from exc
+
+        if asset.status != MediaAssetStatus.READY:
+            raise serializers.ValidationError("El asset no está listo para asociarse.")
+
+        self.context["asset"] = asset
+        return value
+
+
+class ProductImageUpdateSerializer(serializers.Serializer):
+    is_primary = serializers.BooleanField(required=False)
+    sort_order = serializers.IntegerField(required=False, min_value=0)
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError("Debes enviar al menos un campo para actualizar.")
+        return attrs
+
+
+class MediaUploadFileMetaSerializer(serializers.Serializer):
+    filename = serializers.CharField(max_length=255)
+    mime = serializers.CharField(max_length=80)
+    size = serializers.IntegerField(min_value=1)
+    width = serializers.IntegerField(min_value=1)
+    height = serializers.IntegerField(min_value=1)
+
+
+class MediaUploadPresignSerializer(serializers.Serializer):
+    original = MediaUploadFileMetaSerializer()
+    thumb = MediaUploadFileMetaSerializer()
+
+
+class MediaUploadCompleteSerializer(serializers.Serializer):
+    upload_token = serializers.CharField()
 
 
 class ProductSerializer(serializers.ModelSerializer):
     stock = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, write_only=True)
     stock_adjust_reason = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    primary_image_url = serializers.SerializerMethodField()
+    primary_image_id = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     brand_name = serializers.CharField(source="brand.name", read_only=True)
     product_type_name = serializers.CharField(source="product_type.name", read_only=True)
     investor_assignable_qty = serializers.SerializerMethodField()
@@ -47,12 +130,19 @@ class ProductSerializer(serializers.ModelSerializer):
             "is_active",
             "stock",
             "stock_adjust_reason",
-            "primary_image_url",
+            "primary_image_id",
+            "images",
             "investor_assignable_qty",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "primary_image_url", "investor_assignable_qty"]
+        read_only_fields = ["id", "created_at", "updated_at", "primary_image_id", "images", "investor_assignable_qty"]
+
+    @staticmethod
+    def _ordered_images(obj):
+        images = list(obj.images.all())
+        images.sort(key=lambda image: (0 if image.is_primary else 1, image.sort_order, image.created_at))
+        return images
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -66,12 +156,15 @@ class ProductSerializer(serializers.ModelSerializer):
         data["stock"] = f"{current_stock:.2f}"
         return data
 
-    def get_primary_image_url(self, obj):
-        primary = next((image for image in obj.images.all() if image.is_primary), None)
-        if primary:
-            return primary.image_url
-        first_image = next(iter(obj.images.all()), None)
-        return first_image.image_url if first_image else None
+    def get_primary_image_id(self, obj):
+        image = next((image for image in self._ordered_images(obj) if image.is_primary), None)
+        if image:
+            return str(image.id)
+        first_image = next(iter(self._ordered_images(obj)), None)
+        return str(first_image.id) if first_image else None
+
+    def get_images(self, obj):
+        return ProductImageSerializer(self._ordered_images(obj), many=True).data
 
     def get_investor_assignable_qty(self, obj):
         current_stock = getattr(obj, "stock", None)
@@ -150,12 +243,12 @@ class ProductSerializer(serializers.ModelSerializer):
         if not reason.strip():
             raise serializers.ValidationError({"stock_adjust_reason": "La razón del ajuste de stock es obligatoria."})
 
-        # Positive delta with cost_price → create PurchaseReceipt so it counts in purchase metrics
+        # Positive delta with cost_price -> create PurchaseReceipt so it counts in purchase metrics
         if quantity_delta > 0 and product.cost_price is not None and product.cost_price > 0:
             self._create_purchase_receipt(product, quantity_delta, reason, reference_type)
             return
 
-        # Negative delta or no cost → plain adjustment (no purchase receipt)
+        # Negative delta or no cost -> plain adjustment (no purchase receipt)
         InventoryMovement.objects.create(
             product=product,
             movement_type=MovementType.ADJUSTMENT,
@@ -188,7 +281,8 @@ class ProductSerializer(serializers.ModelSerializer):
 
 
 class PublicCatalogProductSerializer(serializers.ModelSerializer):
-    primary_image_url = serializers.SerializerMethodField()
+    primary_image_id = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -197,17 +291,27 @@ class PublicCatalogProductSerializer(serializers.ModelSerializer):
             "sku",
             "name",
             "default_price",
-            "primary_image_url",
+            "primary_image_id",
+            "images",
             "updated_at",
         ]
         read_only_fields = fields
 
-    def get_primary_image_url(self, obj):
-        primary = next((image for image in obj.images.all() if image.is_primary), None)
-        if primary:
-            return primary.image_url
-        first_image = next(iter(obj.images.all()), None)
-        return first_image.image_url if first_image else None
+    @staticmethod
+    def _ordered_images(obj):
+        images = list(obj.images.all())
+        images.sort(key=lambda image: (0 if image.is_primary else 1, image.sort_order, image.created_at))
+        return images
+
+    def get_primary_image_id(self, obj):
+        image = next((image for image in self._ordered_images(obj) if image.is_primary), None)
+        if image:
+            return str(image.id)
+        first_image = next(iter(self._ordered_images(obj)), None)
+        return str(first_image.id) if first_image else None
+
+    def get_images(self, obj):
+        return ProductImageSerializer(self._ordered_images(obj), many=True).data
 
 
 class BrandSerializer(serializers.ModelSerializer):

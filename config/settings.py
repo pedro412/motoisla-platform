@@ -1,6 +1,7 @@
-import environ
 from datetime import timedelta
 from pathlib import Path
+
+import environ
 from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -115,6 +116,22 @@ CACHES = {
 
 PUBLIC_CATALOG_CACHE_TTL_SECONDS = env.int("PUBLIC_CATALOG_CACHE_TTL_SECONDS", default=60)
 PUBLIC_CATALOG_THROTTLE_RATE = env("PUBLIC_CATALOG_THROTTLE_RATE", default="120/min")
+
+MEDIA_PROVIDER = env("MEDIA_PROVIDER", default="R2")
+R2_ACCOUNT_ID = env("R2_ACCOUNT_ID", default="")
+R2_BUCKET = env("R2_BUCKET", default="")
+R2_ACCESS_KEY_ID = env("R2_ACCESS_KEY_ID", default="")
+R2_SECRET_ACCESS_KEY = env("R2_SECRET_ACCESS_KEY", default="")
+R2_PUBLIC_BASE_URL = env("R2_PUBLIC_BASE_URL", default="")
+MEDIA_MAX_BYTES = env.int("MEDIA_MAX_BYTES", default=8_388_608)
+MEDIA_MAX_DIMENSION = env.int("MEDIA_MAX_DIMENSION", default=3000)
+MEDIA_ALLOWED_MIME = [
+    value.strip().lower()
+    for value in env("MEDIA_ALLOWED_MIME", default="image/jpeg,image/png,image/webp").split(",")
+    if value.strip()
+]
+MEDIA_SOFT_DELETE_DAYS = env.int("MEDIA_SOFT_DELETE_DAYS", default=30)
+MEDIA_PRESIGN_TTL_SECONDS = env.int("MEDIA_PRESIGN_TTL_SECONDS", default=300)
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"

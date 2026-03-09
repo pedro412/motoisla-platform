@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.catalog.models import Brand, Product, ProductImage, ProductType
+from apps.catalog.models import Brand, MediaAsset, Product, ProductImage, ProductType
 
 
 class ProductImageInline(admin.TabularInline):
@@ -18,9 +18,16 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(ProductImage)
 class ProductImageAdmin(admin.ModelAdmin):
-    list_display = ("product", "is_primary", "created_at")
+    list_display = ("product", "asset", "is_primary", "sort_order", "created_at")
     list_filter = ("is_primary",)
-    search_fields = ("product__sku", "product__name", "image_url")
+    search_fields = ("product__sku", "product__name", "asset__public_url_original")
+
+
+@admin.register(MediaAsset)
+class MediaAssetAdmin(admin.ModelAdmin):
+    list_display = ("id", "provider", "status", "mime_type", "size_bytes", "created_at")
+    list_filter = ("provider", "status", "mime_type")
+    search_fields = ("object_key_original", "object_key_thumb", "public_url_original", "public_url_thumb")
 
 
 @admin.register(Brand)

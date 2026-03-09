@@ -1,16 +1,38 @@
+from datetime import timedelta
+
 from django.conf import settings
-from django.db.models import Q
+from django.db import IntegrityError, transaction
+from django.db.models import Max, Q
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
-from rest_framework import generics, viewsets
+from rest_framework import generics, serializers, status, viewsets
 from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.audit.services import record_audit
-from apps.catalog.models import Brand, Product, ProductImage, ProductType
+from apps.catalog.models import Brand, MediaAsset, MediaAssetStatus, MediaProvider, Product, ProductImage, ProductType
 from apps.catalog.querysets import with_inventory_metrics
+from apps.catalog.r2 import (
+    assert_r2_enabled,
+    build_product_object_key,
+    build_public_url,
+    create_upload_token,
+    ensure_object_exists,
+    parse_upload_token,
+    presign_put_object,
+    validate_file_meta,
+)
 from apps.catalog.serializers import (
     BrandSerializer,
+    MediaAssetSerializer,
+    MediaUploadCompleteSerializer,
+    MediaUploadPresignSerializer,
+    ProductImageAttachSerializer,
     ProductImageSerializer,
+    ProductImageUpdateSerializer,
     ProductSerializer,
     ProductTypeSerializer,
     PublicCatalogProductSerializer,
@@ -33,7 +55,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     }
 
     def get_queryset(self):
-        queryset = with_inventory_metrics(Product.objects.all()).prefetch_related("images")
+        queryset = with_inventory_metrics(Product.objects.all()).prefetch_related("images__asset")
 
         include_inactive = self.request.query_params.get("include_inactive", "").strip().lower()
         if include_inactive not in {"1", "true", "yes"}:
@@ -122,56 +144,245 @@ class ProductViewSet(viewsets.ModelViewSet):
         super().perform_destroy(instance)
 
 
-class ProductImageViewSet(viewsets.ModelViewSet):
-    queryset = ProductImage.objects.select_related("product")
-    serializer_class = ProductImageSerializer
+class MediaUploadPresignView(APIView):
+    permission_classes = [RolePermission]
+    capability_map = {"post": ["catalog.manage"]}
+
+    def post(self, request):
+        serializer = MediaUploadPresignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        assert_r2_enabled()
+
+        original = serializer.validated_data["original"]
+        thumb = serializer.validated_data["thumb"]
+
+        validate_file_meta(original, field_name="original")
+        validate_file_meta(thumb, field_name="thumb")
+
+        original_key = build_product_object_key("original", original["filename"], original["mime"])
+        thumb_key = build_product_object_key("thumb", thumb["filename"], thumb["mime"])
+
+        token_payload = {
+            "provider": MediaProvider.R2,
+            "bucket": settings.R2_BUCKET,
+            "object_key_original": original_key,
+            "object_key_thumb": thumb_key,
+            "original": original,
+            "thumb": thumb,
+        }
+        upload_token = create_upload_token(token_payload)
+
+        return Response(
+            {
+                "upload_token": upload_token,
+                "original": presign_put_object(original_key, original["mime"]),
+                "thumb": presign_put_object(thumb_key, thumb["mime"]),
+            }
+        )
+
+
+class MediaUploadCompleteView(APIView):
+    permission_classes = [RolePermission]
+    capability_map = {"post": ["catalog.manage"]}
+
+    def post(self, request):
+        serializer = MediaUploadCompleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        assert_r2_enabled()
+
+        token_payload = parse_upload_token(serializer.validated_data["upload_token"])
+
+        object_key_original = token_payload["object_key_original"]
+        object_key_thumb = token_payload["object_key_thumb"]
+
+        ensure_object_exists(object_key_original)
+        ensure_object_exists(object_key_thumb)
+
+        original_meta = token_payload["original"]
+
+        asset = MediaAsset.objects.create(
+            provider=MediaProvider.R2,
+            bucket=token_payload["bucket"],
+            object_key_original=object_key_original,
+            object_key_thumb=object_key_thumb,
+            public_url_original=build_public_url(object_key_original),
+            public_url_thumb=build_public_url(object_key_thumb),
+            mime_type=original_meta["mime"],
+            size_bytes=original_meta["size"],
+            width=original_meta["width"],
+            height=original_meta["height"],
+            status=MediaAssetStatus.READY,
+        )
+
+        record_audit(
+            actor=request.user,
+            action="media.upload.complete",
+            entity_type="media_asset",
+            entity_id=asset.id,
+            payload={
+                "provider": asset.provider,
+                "bucket": asset.bucket,
+                "object_key_original": asset.object_key_original,
+                "object_key_thumb": asset.object_key_thumb,
+            },
+        )
+
+        return Response({"asset_id": str(asset.id), "asset": MediaAssetSerializer(asset).data}, status=status.HTTP_201_CREATED)
+
+
+def _schedule_soft_delete_if_orphan(asset):
+    if asset.product_images.exists() or asset.status == MediaAssetStatus.SOFT_DELETED:
+        return
+
+    days = int(getattr(settings, "MEDIA_SOFT_DELETE_DAYS", 30))
+    asset.status = MediaAssetStatus.SOFT_DELETED
+    asset.delete_after = timezone.now() + timedelta(days=days)
+    asset.save(update_fields=["status", "delete_after", "updated_at"])
+
+
+def _restore_asset_if_soft_deleted(asset):
+    if asset.status != MediaAssetStatus.SOFT_DELETED:
+        return
+
+    asset.status = MediaAssetStatus.READY
+    asset.delete_after = None
+    asset.save(update_fields=["status", "delete_after", "updated_at"])
+
+
+class ProductImageListCreateView(APIView):
     permission_classes = [RolePermission]
     capability_map = {
-        "list": ["catalog.view"],
-        "retrieve": ["catalog.view"],
-        "create": ["catalog.manage"],
-        "partial_update": ["catalog.manage"],
-        "update": ["catalog.manage"],
-        "destroy": ["catalog.manage"],
+        "get": ["catalog.view"],
+        "post": ["catalog.manage"],
     }
 
-    def perform_create(self, serializer):
-        image = serializer.save()
+    @staticmethod
+    def _get_product(product_id):
+        return get_object_or_404(Product.objects.prefetch_related("images__asset"), id=product_id)
+
+    def get(self, request, product_id):
+        product = self._get_product(product_id)
+        images = product.images.select_related("asset").order_by("-is_primary", "sort_order", "created_at")
+        return Response(ProductImageSerializer(images, many=True).data)
+
+    def post(self, request, product_id):
+        product = self._get_product(product_id)
+        serializer = ProductImageAttachSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+
+        asset = serializer.context["asset"]
+        is_primary = serializer.validated_data.get("is_primary")
+        sort_order = serializer.validated_data.get("sort_order")
+
+        with transaction.atomic():
+            _restore_asset_if_soft_deleted(asset)
+
+            existing_count = product.images.count()
+            if is_primary is None:
+                is_primary = existing_count == 0
+
+            if sort_order is None:
+                max_sort = product.images.aggregate(value=Max("sort_order")).get("value")
+                sort_order = 0 if max_sort is None else max_sort + 1
+
+            if is_primary:
+                product.images.filter(is_primary=True).update(is_primary=False)
+
+            try:
+                image = ProductImage.objects.create(
+                    product=product,
+                    asset=asset,
+                    is_primary=is_primary,
+                    sort_order=sort_order,
+                )
+            except IntegrityError as exc:
+                raise serializers.ValidationError({"detail": "No fue posible asociar la imagen al producto."}) from exc
+
         record_audit(
-            actor=self.request.user,
-            action="catalog.product_image.create",
+            actor=request.user,
+            action="product_image.attach",
             entity_type="product_image",
             entity_id=image.id,
             payload={
-                "product_id": str(image.product_id),
+                "product_id": str(product.id),
+                "asset_id": str(asset.id),
                 "is_primary": image.is_primary,
+                "sort_order": image.sort_order,
             },
         )
 
-    def perform_update(self, serializer):
-        old_image = self.get_object()
-        old_snapshot = {"image_url": old_image.image_url, "is_primary": old_image.is_primary}
-        image = serializer.save()
+        return Response(ProductImageSerializer(image).data, status=status.HTTP_201_CREATED)
+
+
+class ProductImageDetailView(APIView):
+    permission_classes = [RolePermission]
+    capability_map = {
+        "patch": ["catalog.manage"],
+        "delete": ["catalog.manage"],
+    }
+
+    @staticmethod
+    def _get_product_image(product_id, image_id):
+        product = get_object_or_404(Product, id=product_id)
+        image = get_object_or_404(ProductImage.objects.select_related("asset"), id=image_id, product=product)
+        return product, image
+
+    def patch(self, request, product_id, image_id):
+        product, image = self._get_product_image(product_id, image_id)
+        serializer = ProductImageUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        is_primary = serializer.validated_data.get("is_primary", image.is_primary)
+        sort_order = serializer.validated_data.get("sort_order", image.sort_order)
+
+        old_snapshot = {"is_primary": image.is_primary, "sort_order": image.sort_order}
+
+        with transaction.atomic():
+            if is_primary:
+                product.images.filter(is_primary=True).exclude(id=image.id).update(is_primary=False)
+
+            image.is_primary = is_primary
+            image.sort_order = sort_order
+            image.save(update_fields=["is_primary", "sort_order", "updated_at"])
+
         record_audit(
-            actor=self.request.user,
-            action="catalog.product_image.update",
+            actor=request.user,
+            action="product_image.update",
             entity_type="product_image",
             entity_id=image.id,
-            payload={
-                "before": old_snapshot,
-                "after": {"image_url": image.image_url, "is_primary": image.is_primary},
-            },
+            payload={"before": old_snapshot, "after": {"is_primary": image.is_primary, "sort_order": image.sort_order}},
         )
 
-    def perform_destroy(self, instance):
+        return Response(ProductImageSerializer(image).data)
+
+    def delete(self, request, product_id, image_id):
+        product, image = self._get_product_image(product_id, image_id)
+        asset = image.asset
+        was_primary = image.is_primary
+
+        with transaction.atomic():
+            image_id_value = image.id
+            image.delete()
+
+            if was_primary:
+                next_image = product.images.order_by("sort_order", "created_at").first()
+                if next_image and not next_image.is_primary:
+                    next_image.is_primary = True
+                    next_image.save(update_fields=["is_primary", "updated_at"])
+
+            _schedule_soft_delete_if_orphan(asset)
+
         record_audit(
-            actor=self.request.user,
-            action="catalog.product_image.delete",
+            actor=request.user,
+            action="product_image.delete",
             entity_type="product_image",
-            entity_id=instance.id,
-            payload={"product_id": str(instance.product_id), "is_primary": instance.is_primary},
+            entity_id=image_id_value,
+            payload={"product_id": str(product.id), "asset_id": str(asset.id)},
         )
-        super().perform_destroy(instance)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class BrandViewSet(viewsets.ModelViewSet):
@@ -226,7 +437,7 @@ class PublicCatalogListView(generics.ListAPIView):
     throttle_classes = [PublicCatalogAnonThrottle]
 
     def get_queryset(self):
-        queryset = Product.objects.filter(is_active=True).prefetch_related("images").order_by("name")
+        queryset = Product.objects.filter(is_active=True).prefetch_related("images__asset").order_by("name")
         query = self.request.query_params.get("q")
         if query:
             query = query.strip()
@@ -243,4 +454,4 @@ class PublicCatalogDetailView(generics.RetrieveAPIView):
     lookup_field = "sku"
 
     def get_queryset(self):
-        return Product.objects.filter(is_active=True).prefetch_related("images")
+        return Product.objects.filter(is_active=True).prefetch_related("images__asset")

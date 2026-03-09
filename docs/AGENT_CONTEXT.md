@@ -48,7 +48,7 @@ Implementado y funcional hasta Fase 8 (scope backend) del plan por capas:
 ## 6. Endpoints clave
 - Auth: `/api/v1/auth/token/`, `/api/v1/auth/token/refresh/`, `/api/v1/auth/password-reset/`, `/api/v1/auth/password-reset-confirm/`
 - Users: `/api/v1/users/` (ADMIN-only CRUD, DELETE disabled → use is_active toggle)
-- Catalog: `/api/v1/products/`, `/api/v1/product-images/`
+- Catalog: `/api/v1/products/`, `/api/v1/products/{id}/images/`, `/api/v1/media/uploads/(presign|complete)/`
 - Inventory: `/api/v1/inventory/movements/`, `/api/v1/inventory/stocks/`
 - Imports: `/api/v1/import-batches/`, `/api/v1/import-lines/{id}/`
 - Purchases: `/api/v1/purchase-receipts/`
