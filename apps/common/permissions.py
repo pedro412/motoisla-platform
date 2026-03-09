@@ -28,6 +28,7 @@ ROLE_CAPABILITIES = {
         "metrics.view",
         "expenses.view",
         "expenses.manage",
+        "users.manage",
     },
     UserRole.CASHIER: {
         "catalog.view",

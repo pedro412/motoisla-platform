@@ -25,6 +25,55 @@ Content-Type: application/json
   "refresh": "REPLACE_ME"
 }
 
+### --- User Management (ADMIN) ---
+
+### List Users
+GET {{baseUrl}}/api/v1/users/?q=
+Authorization: Bearer {{accessToken}}
+
+### Create User
+POST {{baseUrl}}/api/v1/users/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "email": "cajero@motoisla.mx",
+  "first_name": "Nuevo",
+  "last_name": "Cajero",
+  "role": "CASHIER",
+  "password": "SecurePass123!"
+}
+
+### Update User
+PATCH {{baseUrl}}/api/v1/users/2/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "first_name": "Nombre Actualizado",
+  "is_active": false
+}
+
+### --- Password Reset (Public) ---
+
+### Request Password Reset
+POST {{baseUrl}}/api/v1/auth/password-reset/
+Content-Type: application/json
+
+{
+  "email": "admin@motoisla.mx"
+}
+
+### Confirm Password Reset
+POST {{baseUrl}}/api/v1/auth/password-reset-confirm/
+Content-Type: application/json
+
+{
+  "uid": "REPLACE_ME",
+  "token": "REPLACE_ME",
+  "new_password": "NewSecurePass123!"
+}
+
 ### Metrics
 GET {{baseUrl}}/api/v1/metrics/?date_from=2026-01-01&date_to=2026-12-31&top_limit=10
 Authorization: Bearer {{accessToken}}

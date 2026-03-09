@@ -77,7 +77,17 @@ Este backlog mantiene el orden del plan original y deja tareas ejecutables para 
 4. ✅ Test de inmutabilidad de `LedgerEntry`.
 5. ✅ Integration test de ciclo completo confirmar→anular ya existía; chaos tests validan el rollback explícito.
 
-## Prioridad 10 — Clientes / lealtad (backlog)
+## Prioridad 11 — User Management & Password Reset ✅
+1. ✅ `User.email` unique constraint + data migration for existing users.
+2. ✅ Custom `UserManager` auto-generates placeholder email when blank (backwards compat for tests).
+3. ✅ `UserViewSet` — full CRUD at `/users/` with `users.manage` capability (ADMIN only). DELETE returns 405; use `is_active` toggle.
+4. ✅ Serializers: `UserCreateSerializer` (sets `username=email`, Group assignment, optional Investor linking), `UserUpdateSerializer`, `UserListSerializer`.
+5. ✅ `PasswordResetRequestView` at `/auth/password-reset/` — AllowAny, throttled 5/hour, generic response (OWASP).
+6. ✅ `PasswordResetConfirmView` at `/auth/password-reset-confirm/` — validates token + password against Django validators.
+7. ✅ Email: console backend by default, Gmail SMTP ready. HTML template with dark theme. `PASSWORD_RESET_TIMEOUT=3600`.
+8. ✅ Audit trail on `user.create`, `user.update`, `password_reset.request`, `password_reset.confirm`.
+
+## Prioridad 12 — Clientes / lealtad (backlog)
 1. Diseñar programa de lealtad o descuentos basado en historial de compras del `Customer`.
 2. Definir reglas de elegibilidad y trazabilidad para promociones por recurrencia.
 
