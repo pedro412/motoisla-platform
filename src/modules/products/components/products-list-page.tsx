@@ -32,6 +32,7 @@ import { productsService } from "@/modules/products/services/products.service";
 import { reportsService } from "@/modules/reports/services/reports.service";
 import { taxonomyService } from "@/modules/taxonomy/services/taxonomy.service";
 import { formatCurrency, formatDateTime, sortProductsForDisplay } from "@/modules/products/utils";
+import { getPrimaryImageUrl } from "@/modules/products/image-upload";
 import { useSessionStore } from "@/store/session-store";
 
 const IVA_RATE = 0.16;
@@ -584,7 +585,7 @@ export function ProductsListPage() {
                     >
                       <TableCell>
                         <Avatar
-                          src={product.primary_image_url ?? undefined}
+                          src={getPrimaryImageUrl(product.images, product.primary_image_id) ?? undefined}
                           alt={product.name}
                           sx={{
                             width: 44,
