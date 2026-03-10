@@ -5,7 +5,7 @@ from rest_framework.test import APITestCase
 
 from apps.audit.models import AuditLog
 from apps.catalog.models import Product
-from apps.investors.models import Investor
+from apps.investors.models import Investor, InvestorAssignment
 from apps.inventory.models import InventoryMovement, MovementType
 from apps.ledger.models import LedgerEntry, LedgerEntryType
 
@@ -17,8 +17,10 @@ class InvestorLedgerTests(APITestCase):
         self.admin = User.objects.create_user(username="admin_inv", password="admin123", role="ADMIN")
         self.cashier = User.objects.create_user(username="cashier_inv", password="cashier123", role="CASHIER")
         self.investor_user = User.objects.create_user(username="investor_inv", password="investor123", role="INVESTOR")
+        self.other_investor_user = User.objects.create_user(username="investor_other", password="investor123", role="INVESTOR")
 
         self.investor = Investor.objects.create(user=self.investor_user, display_name="Investor Uno")
+        self.other_investor = Investor.objects.create(user=self.other_investor_user, display_name="Investor Dos")
         self.product = Product.objects.create(sku="INV-001", name="Intercom", default_price=Decimal("100.00"))
 
     def auth_as(self, username, password):
@@ -80,7 +82,7 @@ class InvestorLedgerTests(APITestCase):
             format="json",
         )
 
-        response = self.client.get("/api/v1/investors/?q=Investor")
+        response = self.client.get("/api/v1/investors/?q=Investor Uno")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(Decimal(response.data["results"][0]["balances"]["capital"]), Decimal("500.00"))
@@ -243,6 +245,29 @@ class InvestorLedgerTests(APITestCase):
 
         denied = self.client.get(f"/api/v1/investors/{self.investor.id}/")
         self.assertEqual(denied.status_code, 403)
+
+    def test_investor_me_assignments_only_returns_own_assignments(self):
+        own_assignment = InvestorAssignment.objects.create(
+            investor=self.investor,
+            product=self.product,
+            qty_assigned=Decimal("5.00"),
+            qty_sold=Decimal("2.00"),
+            unit_cost=Decimal("50.00"),
+        )
+        InvestorAssignment.objects.create(
+            investor=self.other_investor,
+            product=self.product,
+            qty_assigned=Decimal("7.00"),
+            qty_sold=Decimal("0.00"),
+            unit_cost=Decimal("55.00"),
+        )
+
+        self.auth_as("investor_inv", "investor123")
+        response = self.client.get("/api/v1/investors/me/assignments/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], str(own_assignment.id))
+        self.assertEqual(Decimal(response.data["results"][0]["qty_available"]), Decimal("3.00"))
 
     def test_cashier_cannot_access_admin_investor_routes(self):
         self.auth_as("cashier_inv", "cashier123")
