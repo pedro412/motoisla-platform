@@ -12,7 +12,7 @@ Backend API de Moto Isla con Django + DRF + PostgreSQL para operación de tienda
 - Docker Compose (`web` + `db`)
 
 ## 3. Estructura de módulos
-- `apps/accounts`: usuario custom, roles, seed de grupos, user CRUD API y password reset.
+- `apps/accounts`: usuario custom, roles, seed de grupos, user CRUD API, password reset y PIN de estación de trabajo.
 - `apps/catalog`: productos e imágenes.
 - `apps/inventory`: movimientos e inventario agregado.
 - `apps/suppliers`: proveedores y parser por proveedor.
@@ -46,7 +46,7 @@ Implementado y funcional hasta Fase 8 (scope backend) del plan por capas:
 - Operación local recomendada con Docker.
 
 ## 6. Endpoints clave
-- Auth: `/api/v1/auth/token/`, `/api/v1/auth/token/refresh/`, `/api/v1/auth/password-reset/`, `/api/v1/auth/password-reset-confirm/`
+- Auth: `/api/v1/auth/token/`, `/api/v1/auth/token/refresh/`, `/api/v1/auth/password-reset/`, `/api/v1/auth/password-reset-confirm/`, `/api/v1/auth/pin-login/`, `/api/v1/auth/pin/`
 - Users: `/api/v1/users/` (ADMIN-only CRUD, DELETE disabled → use is_active toggle)
 - Catalog: `/api/v1/products/`, `/api/v1/products/{id}/images/`, `/api/v1/media/uploads/(presign|complete)/`
 - Inventory: `/api/v1/inventory/movements/`, `/api/v1/inventory/stocks/`
