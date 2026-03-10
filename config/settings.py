@@ -162,6 +162,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "public_catalog": PUBLIC_CATALOG_THROTTLE_RATE,
         "password_reset": "5/hour",
+        "pin_login": "10/minute",
     },
 }
 

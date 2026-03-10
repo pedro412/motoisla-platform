@@ -8,6 +8,7 @@ from apps.investors.models import Investor
 
 class UserListSerializer(serializers.ModelSerializer):
     investor_profile_id = serializers.SerializerMethodField()
+    has_pin = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -22,6 +23,7 @@ class UserListSerializer(serializers.ModelSerializer):
             "date_joined",
             "last_login",
             "investor_profile_id",
+            "has_pin",
         ]
         read_only_fields = fields
 
@@ -30,6 +32,9 @@ class UserListSerializer(serializers.ModelSerializer):
         if profile:
             return str(profile.id)
         return None
+
+    def get_has_pin(self, obj):
+        return bool(obj.pin_hash)
 
 
 class UserCreateSerializer(serializers.Serializer):

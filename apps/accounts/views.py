@@ -12,9 +12,12 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from apps.accounts.models import User
 from apps.accounts.serializers import UserCreateSerializer, UserListSerializer, UserUpdateSerializer
-from apps.accounts.throttles import PasswordResetThrottle
+from apps.accounts.throttles import PasswordResetThrottle, PinLoginThrottle
 from apps.audit.services import record_audit
 from apps.common.permissions import RolePermission
 
@@ -210,3 +213,77 @@ class PasswordResetConfirmView(APIView):
         )
 
         return Response({"detail": "Contraseña actualizada exitosamente."})
+
+
+class PinLoginView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [PinLoginThrottle]
+
+    def post(self, request):
+        username = request.data.get("username", "").strip()
+        pin = request.data.get("pin", "").strip()
+
+        if not username or not pin:
+            return Response(
+                {"code": "validation_error", "detail": "Username y PIN son obligatorios.", "fields": {}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = User.objects.get(username=username, is_active=True)
+        except User.DoesNotExist:
+            return Response(
+                {"code": "invalid_credentials", "detail": "Credenciales inválidas.", "fields": {}},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if not user.pin_hash or not user.check_pin(pin):
+            return Response(
+                {"code": "invalid_credentials", "detail": "Credenciales inválidas.", "fields": {}},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+        })
+
+
+class PinSetView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        current_password = request.data.get("current_password", "")
+        pin = request.data.get("pin")
+
+        if not current_password:
+            return Response(
+                {"code": "validation_error", "detail": "La contraseña actual es requerida.", "fields": {}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = request.user
+        if not user.check_password(current_password):
+            return Response(
+                {"code": "invalid_credentials", "detail": "Contraseña incorrecta.", "fields": {}},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if pin is None:
+            # Remove PIN
+            user.pin_hash = ""
+            user.save(update_fields=["pin_hash"])
+            return Response({"detail": "PIN eliminado.", "has_pin": False})
+
+        pin = str(pin).strip()
+        if len(pin) != 6 or not pin.isdigit():
+            return Response(
+                {"code": "validation_error", "detail": "El PIN debe ser de 6 dígitos.", "fields": {}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_pin(pin)
+        user.save(update_fields=["pin_hash"])
+        return Response({"detail": "PIN establecido.", "has_pin": True})

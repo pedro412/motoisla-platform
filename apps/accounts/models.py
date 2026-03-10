@@ -18,5 +18,16 @@ class UserManager(DjangoUserManager):
 class User(AbstractUser):
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=20, choices=UserRole.choices, default=UserRole.CASHIER)
+    pin_hash = models.CharField(max_length=128, blank=True, default="")
 
     objects = UserManager()
+
+    def set_pin(self, raw_pin):
+        from django.contrib.auth.hashers import make_password
+
+        self.pin_hash = make_password(raw_pin)
+
+    def check_pin(self, raw_pin):
+        from django.contrib.auth.hashers import check_password
+
+        return check_password(raw_pin, self.pin_hash)

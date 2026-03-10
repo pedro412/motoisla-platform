@@ -31,7 +31,7 @@ Base técnica: **Django + DRF + JWT + PostgreSQL**, listo para correr local con 
 ## Estructura principal
 - `config/`: configuración Django.
 - `apps/api_urls.py`: enrutado API `v1`.
-- `apps/accounts`: usuario custom + roles.
+- `apps/accounts`: usuario custom, roles, PIN de estación de trabajo.
 - `apps/catalog`: productos, imágenes y catálogo público readonly.
 - `apps/inventory`: movimientos y stock agregado.
 - `apps/imports`: parse/edición/confirmación de factura pegada.
@@ -87,6 +87,8 @@ Nota: al iniciar el contenedor `web`, los seeds `seed_suppliers_parsers` y `seed
 - Auth:
   - `POST /api/v1/auth/token/`
   - `POST /api/v1/auth/token/refresh/`
+  - `POST /api/v1/auth/pin-login/` (login con PIN de 6 dígitos, throttled 10/min)
+  - `POST /api/v1/auth/pin/` (autenticado: establecer/eliminar PIN)
 - Catálogo interno:
   - `GET/POST /api/v1/products/`
   - `GET/PATCH/DELETE /api/v1/products/{id}/`
@@ -176,6 +178,7 @@ Nota: al iniciar el contenedor `web`, los seeds `seed_suppliers_parsers` y `seed
 - `Expense` ahora soporta plantillas mensuales (`FixedExpenseTemplate`), generación idempotente y estados `PENDING` / `PAID` / `CANCELLED`.
 - `GET /api/v1/reports/sales/` ahora expone `investor_metrics` e `inventory_snapshot` con buckets de inventario propio vs inventario fondeado por inversionistas.
 - El flujo frontend de importación puede mostrar `unit_price` como `Costo + IVA`; backend mantiene el mismo payload (`unit_cost`, `unit_price`, `public_price`) sin cambios de contrato.
+- `User` ahora tiene `pin_hash` para PIN de 6 dígitos (workstation lock screen). `UserListSerializer` expone `has_pin` (bool). PIN login throttled a 10/min por IP.
 
 ## Convenciones
 - Roles: `ADMIN`, `CASHIER`, `INVESTOR`.
