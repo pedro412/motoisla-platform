@@ -403,3 +403,20 @@ class MyLedgerView(ListAPIView):
         if investor is None:
             return LedgerEntry.objects.none()
         return LedgerEntry.objects.filter(investor=investor)
+
+
+class MyInvestorAssignmentsView(ListAPIView):
+    permission_classes = [RolePermission]
+    capability_map = {"get": ["investor.view.own"]}
+    serializer_class = InvestorAssignmentSerializer
+
+    def get_queryset(self):
+        investor = Investor.objects.filter(user=self.request.user).first()
+        if investor is None:
+            return InvestorAssignment.objects.none()
+        return (
+            InvestorAssignment.objects.filter(investor=investor)
+            .annotate(qty_available=F("qty_assigned") - F("qty_sold"))
+            .select_related("investor", "product")
+            .order_by("-created_at")
+        )
