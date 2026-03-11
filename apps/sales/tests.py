@@ -310,7 +310,7 @@ class ApiFlowTests(APITestCase):
 
     def test_sale_accepts_card_plan_and_persists_snapshot(self):
         self.auth_as("cashier", "cashier123")
-        plan = self.card_plan("MSI_3")
+        plan = self.card_plan("CREDIT_MSI_3")
 
         response = self.client.post(
             "/api/v1/sales/",
@@ -332,14 +332,16 @@ class ApiFlowTests(APITestCase):
         self.assertEqual(response.status_code, 201)
         payment = Payment.objects.get(sale_id=response.data["id"])
         self.assertEqual(payment.card_commission_plan_id, plan.id)
-        self.assertEqual(payment.card_plan_code, "MSI_3")
-        self.assertEqual(payment.card_plan_label, "3 MSI")
+        self.assertEqual(payment.card_plan_code, "CREDIT_MSI_3")
+        self.assertEqual(payment.card_plan_label, "Crédito 3 MSI")
         self.assertEqual(payment.installments_months, 3)
         self.assertEqual(payment.commission_rate, Decimal("0.0558"))
         self.assertEqual(payment.card_type, CardType.MSI_3)
+        self.assertEqual(payment.card_instrument, CardInstrument.CREDIT)
 
-    def test_sale_legacy_card_type_persists_commission_snapshot(self):
+    def test_sale_debit_card_plan_persists_commission_snapshot(self):
         self.auth_as("cashier", "cashier123")
+        plan = self.card_plan("DEBIT_NORMAL")
 
         response = self.client.post(
             "/api/v1/sales/",
@@ -353,18 +355,19 @@ class ApiFlowTests(APITestCase):
                         "discount_pct": "0.00",
                     }
                 ],
-                "payments": [{"method": "CARD", "amount": "100.00", "card_type": "NORMAL"}],
+                "payments": [{"method": "CARD", "amount": "100.00", "card_plan_id": str(plan.id)}],
             },
             format="json",
         )
 
         self.assertEqual(response.status_code, 201)
         payment = Payment.objects.get(sale_id=response.data["id"])
-        self.assertEqual(payment.card_plan_code, "NORMAL")
-        self.assertEqual(payment.card_plan_label, "Tarjeta")
+        self.assertEqual(payment.card_plan_code, "DEBIT_NORMAL")
+        self.assertEqual(payment.card_plan_label, "Tarjeta de débito")
         self.assertEqual(payment.installments_months, 0)
         self.assertEqual(payment.commission_rate, Decimal("0.0200"))
         self.assertEqual(payment.card_type, CardType.NORMAL)
+        self.assertEqual(payment.card_instrument, CardInstrument.DEBIT)
 
     def test_sale_rejects_inactive_card_plan(self):
         self.auth_as("cashier", "cashier123")
@@ -466,8 +469,9 @@ class ApiFlowTests(APITestCase):
         response = self.client.get("/api/v1/card-commission-plans/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["count"], 2)
-        self.assertEqual([item["code"] for item in response.data["results"]], ["NORMAL", "MSI_3"])
+        self.assertEqual(response.data["count"], 3)
+        codes = [item["code"] for item in response.data["results"]]
+        self.assertEqual(codes, ["DEBIT_NORMAL", "CREDIT_NORMAL", "CREDIT_MSI_3"])
 
     def test_sales_list_includes_history_fields_and_void_rules(self):
         older = Sale.objects.create(
