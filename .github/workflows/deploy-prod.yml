@@ -31,7 +31,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DJANGO_SECRET_KEY: ci-secret-key
+      DJANGO_SECRET_KEY: ci-check-secret-key-railway-production-2026-03-10-a9f3k2m8q1x7v6n4c0
       DJANGO_DEBUG: "False"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       DJANGO_CSRF_TRUSTED_ORIGINS: http://localhost:8000
