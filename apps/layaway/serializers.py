@@ -12,7 +12,7 @@ from apps.layaway.models import (
     LayawayPayment,
     normalize_phone,
 )
-from apps.sales.models import CardCommissionPlan, CardType, PaymentMethod
+from apps.sales.models import CardCommissionPlan, CardType, PaymentMethod, CardInstrument
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -59,6 +59,7 @@ class LayawayPaymentSerializer(serializers.ModelSerializer):
             "method",
             "amount",
             "card_type",
+            "card_instrument",
             "card_plan_id",
             "card_plan_code",
             "card_plan_label",
@@ -213,8 +214,10 @@ class LayawayCreateSerializer(serializers.Serializer):
                 payment["installments_months"] = plan.installments_months
                 payment["commission_rate"] = plan.commission_rate
                 payment["card_type"] = self._legacy_card_type_for_plan(plan) or payment.get("card_type") or ""
+                payment["card_instrument"] = plan.card_instrument or payment.get("card_instrument") or ""
             else:
                 payment["card_type"] = ""
+                payment["card_instrument"] = ""
                 payment["card_plan_code"] = ""
                 payment["card_plan_label"] = ""
                 payment["installments_months"] = 0
@@ -244,8 +247,10 @@ class LayawayPaymentCreateSerializer(serializers.Serializer):
                 payment["installments_months"] = plan.installments_months
                 payment["commission_rate"] = plan.commission_rate
                 payment["card_type"] = LayawayCreateSerializer._legacy_card_type_for_plan(plan) or payment.get("card_type") or ""
+                payment["card_instrument"] = plan.card_instrument or payment.get("card_instrument") or ""
             else:
                 payment["card_type"] = ""
+                payment["card_instrument"] = ""
                 payment["card_plan_code"] = ""
                 payment["card_plan_label"] = ""
                 payment["installments_months"] = 0

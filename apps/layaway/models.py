@@ -119,6 +119,7 @@ class LayawayPayment(models.Model):
     method = models.CharField(max_length=20, default="CASH")
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     card_type = models.CharField(max_length=12, blank=True, default="")
+    card_instrument = models.CharField(max_length=12, blank=True, default="")
     card_plan_code = models.CharField(max_length=32, blank=True, default="")
     card_plan_label = models.CharField(max_length=64, blank=True, default="")
     installments_months = models.PositiveIntegerField(default=0)

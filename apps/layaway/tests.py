@@ -8,9 +8,10 @@ from rest_framework.test import APITestCase
 
 from apps.catalog.models import Product
 from apps.inventory.models import InventoryMovement
-from apps.layaway.models import Customer, CustomerCredit, Layaway
+from apps.layaway.models import Customer, CustomerCredit, Layaway, LayawayPayment
 from apps.investors.models import Investor, InvestorAssignment
 from apps.ledger.models import LedgerEntry
+from apps.sales.models import CardCommissionPlan, Payment
 
 User = get_user_model()
 
@@ -205,3 +206,113 @@ class LayawayFlowTests(APITestCase):
         self.assertEqual(assignment.qty_sold, Decimal("0.00"))
         self.assertEqual(layaway.status, "REFUNDED")
         self.assertTrue(LedgerEntry.objects.filter(reference_type="sale_void", reference_id=sale_id).exists())
+
+
+class LayawayCardInstrumentTests(APITestCase):
+    """Tests that card_instrument flows correctly through layaway deposit, payments, and settle."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(username="admin_ci", password="admin123", role="ADMIN")
+        self.cashier = User.objects.create_user(username="cashier_ci", password="cashier123", role="CASHIER")
+        self.product = Product.objects.create(sku="CI-001", name="Casco CI", default_price=Decimal("500.00"))
+        InventoryMovement.objects.create(
+            product=self.product,
+            movement_type="INBOUND",
+            quantity_delta=Decimal("10.00"),
+            reference_type="seed",
+            reference_id="ci-seed",
+            note="seed",
+            created_by=self.admin,
+        )
+        # Ensure instrument-aware plans exist
+        self.debit_plan = CardCommissionPlan.objects.filter(code="DEBIT_NORMAL", is_active=True).first()
+        self.credit_plan = CardCommissionPlan.objects.filter(code="CREDIT_NORMAL", is_active=True).first()
+        if not self.debit_plan:
+            self.debit_plan = CardCommissionPlan.objects.create(
+                code="DEBIT_NORMAL", label="Tarjeta de débito", installments=0,
+                rate=Decimal("0.02"), card_instrument="DEBIT", is_active=True, sort_order=0,
+            )
+        if not self.credit_plan:
+            self.credit_plan = CardCommissionPlan.objects.create(
+                code="CREDIT_NORMAL", label="Tarjeta de crédito", installments=0,
+                rate=Decimal("0.02"), card_instrument="CREDIT", is_active=True, sort_order=5,
+            )
+
+    def auth_as(self, username, password):
+        token = self.client.post(
+            "/api/v1/auth/token/",
+            {"username": username, "password": password},
+            format="json",
+        ).data["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def _create_layaway_with_card_deposit(self, plan):
+        self.auth_as("cashier_ci", "cashier123")
+        return self.client.post(
+            "/api/v1/layaways/",
+            {
+                "customer": {"name": "Test CI", "phone": "5559999"},
+                "lines": [
+                    {
+                        "product": str(self.product.id),
+                        "qty": "1.00",
+                        "unit_price": "500.00",
+                        "unit_cost": "200.00",
+                        "discount_pct": "0.00",
+                    },
+                ],
+                "deposit_payments": [
+                    {
+                        "method": "CARD",
+                        "amount": "200.00",
+                        "card_plan_id": str(plan.id),
+                    },
+                ],
+                "expires_at": (timezone.now() + timedelta(days=15)).isoformat(),
+            },
+            format="json",
+        )
+
+    def test_deposit_with_debit_stores_card_instrument(self):
+        response = self._create_layaway_with_card_deposit(self.debit_plan)
+        self.assertEqual(response.status_code, 201)
+        layaway_id = response.data["id"]
+        payment = LayawayPayment.objects.filter(layaway_id=layaway_id).first()
+        self.assertEqual(payment.card_instrument, "DEBIT")
+
+    def test_deposit_with_credit_stores_card_instrument(self):
+        response = self._create_layaway_with_card_deposit(self.credit_plan)
+        self.assertEqual(response.status_code, 201)
+        payment = LayawayPayment.objects.filter(layaway_id=response.data["id"]).first()
+        self.assertEqual(payment.card_instrument, "CREDIT")
+
+    def test_settle_with_card_copies_instrument_to_sale(self):
+        """Settle a layaway with a CREDIT card payment and verify the Sale Payment gets card_instrument."""
+        response = self._create_layaway_with_card_deposit(self.debit_plan)
+        self.assertEqual(response.status_code, 201)
+        layaway_id = response.data["id"]
+
+        settle = self.client.post(
+            f"/api/v1/layaways/{layaway_id}/settle/",
+            {
+                "payments": [
+                    {
+                        "method": "CARD",
+                        "amount": "300.00",
+                        "card_plan_id": str(self.credit_plan.id),
+                    },
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(settle.status_code, 200)
+
+        layaway = Layaway.objects.get(id=layaway_id)
+        sale_payments = Payment.objects.filter(sale_id=layaway.settled_sale_id)
+
+        debit_payments = sale_payments.filter(card_instrument="DEBIT")
+        credit_payments = sale_payments.filter(card_instrument="CREDIT")
+        self.assertEqual(debit_payments.count(), 1)
+        self.assertEqual(credit_payments.count(), 1)
+        self.assertEqual(debit_payments.first().amount, Decimal("200.00"))
+        self.assertEqual(credit_payments.first().amount, Decimal("300.00"))

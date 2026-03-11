@@ -11,6 +11,7 @@ from apps.audit.services import record_audit
 from apps.layaway.models import Customer, CustomerCredit, normalize_phone
 from apps.sales.models import (
     CardCommissionPlan,
+    CardInstrument,
     CardType,
     Payment,
     PaymentMethod,
@@ -50,19 +51,20 @@ class PaymentSerializer(serializers.ModelSerializer):
             "method",
             "amount",
             "card_type",
+            "card_instrument",
             "card_plan_id",
             "commission_rate",
             "card_plan_code",
             "card_plan_label",
             "installments_months",
         ]
-        read_only_fields = ["id", "commission_rate", "card_plan_code", "card_plan_label", "installments_months"]
+        read_only_fields = ["id", "card_instrument", "commission_rate", "card_plan_code", "card_plan_label", "installments_months"]
 
 
 class PaymentSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
-        fields = ["method", "amount", "card_type", "card_plan_label", "installments_months", "commission_rate"]
+        fields = ["method", "amount", "card_type", "card_instrument", "card_plan_label", "installments_months", "commission_rate"]
         read_only_fields = fields
 
 
@@ -75,6 +77,7 @@ class CardCommissionPlanSerializer(serializers.ModelSerializer):
             "label",
             "installments_months",
             "commission_rate",
+            "card_instrument",
             "is_active",
             "sort_order",
         ]
@@ -283,6 +286,7 @@ class SaleSerializer(serializers.ModelSerializer):
                 payment["card_plan_label"] = resolved_plan.label
                 payment["installments_months"] = resolved_plan.installments_months
                 payment["card_type"] = legacy_card_type
+                payment["card_instrument"] = resolved_plan.card_instrument
             else:
                 payment["card_commission_plan"] = None
                 payment["commission_rate"] = None
@@ -290,6 +294,7 @@ class SaleSerializer(serializers.ModelSerializer):
                 payment["card_plan_label"] = ""
                 payment["installments_months"] = 0
                 payment["card_type"] = None
+                payment["card_instrument"] = None
             if payment["method"] == PaymentMethod.CUSTOMER_CREDIT:
                 if not customer_phone:
                     raise serializers.ValidationError(
@@ -452,6 +457,7 @@ class SaleProfitabilityPreviewPaymentSerializer(serializers.Serializer):
         allow_null=True,
     )
     card_type = serializers.ChoiceField(choices=CardType.choices, required=False, allow_null=True)
+    card_instrument = serializers.ChoiceField(choices=CardInstrument.choices, required=False, allow_null=True)
 
 
 class SaleProfitabilityPreviewSerializer(serializers.Serializer):

@@ -45,6 +45,9 @@ Estado: ✅ Cerrada (core)
   - `GET /sales/` enriquecido para historial UI (`cashier_username`, `void_reason`, `can_void`).
   - filtros server-side en `GET /sales/`: `status`, `cashier`, `date_from`, `date_to`.
   - `POST /sales/create-and-confirm/` — creación y confirmación atómica en una sola transacción (elimina drafts huérfanos).
+  - `card_instrument` (DEBIT/CREDIT) en `Payment`, `CardCommissionPlan` y `LayawayPayment` para distinguir débito vs crédito.
+  - planes de comisión por instrumento: DEBIT_NORMAL (2%), CREDIT_NORMAL (2%), CREDIT_MSI_3 (5.58%). Planes legacy NORMAL/MSI_3 desactivados.
+  - métricas/reportes incluyen `card_instruments` en `payment_breakdown` para desglose por instrumento.
 
 ### Fase 5 — Apartados y Saldo a Favor
 Estado: ✅ Cerrada

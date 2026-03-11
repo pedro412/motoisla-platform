@@ -123,9 +123,19 @@ class SalesMetricsMixin:
             )
             .order_by("card_type")
         )
+        card_instruments = list(
+            Payment.objects.filter(sale__in=confirmed_sales, method=PaymentMethod.CARD)
+            .values("card_instrument")
+            .annotate(
+                total_amount=Coalesce(Sum("amount"), 0, output_field=DecimalField(max_digits=16, decimal_places=2)),
+                transactions=Count("id"),
+            )
+            .order_by("card_instrument")
+        )
         return {
             "by_method": by_method,
             "card_types": card_types,
+            "card_instruments": card_instruments,
         }
 
     @staticmethod

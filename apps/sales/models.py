@@ -22,6 +22,11 @@ class CardType(models.TextChoices):
     MSI_3 = "MSI_3", "3MSI"
 
 
+class CardInstrument(models.TextChoices):
+    DEBIT = "DEBIT", "Debit"
+    CREDIT = "CREDIT", "Credit"
+
+
 CARD_NORMAL_COMMISSION = Decimal("0.02")
 CARD_MSI3_COMMISSION = Decimal("0.0558")
 LEGACY_CARD_TYPE_TO_RATE = {
@@ -132,6 +137,7 @@ class CardCommissionPlan(models.Model):
     installments_months = models.PositiveIntegerField(default=0)
     commission_rate = models.DecimalField(max_digits=6, decimal_places=4)
     is_active = models.BooleanField(default=True)
+    card_instrument = models.CharField(max_length=12, choices=CardInstrument.choices, null=True, blank=True)
     sort_order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -152,6 +158,7 @@ class Payment(models.Model):
     method = models.CharField(max_length=20, choices=PaymentMethod.choices)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     card_type = models.CharField(max_length=12, choices=CardType.choices, null=True, blank=True)
+    card_instrument = models.CharField(max_length=12, choices=CardInstrument.choices, null=True, blank=True)
     card_commission_plan = models.ForeignKey(
         CardCommissionPlan,
         on_delete=models.SET_NULL,

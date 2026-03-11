@@ -50,7 +50,7 @@ Este backlog mantiene el orden del plan original y deja tareas ejecutables para 
 ## Prioridad 7 — Ventas (siguiente iteración UX/operación) ✅
 1. ✅ Filtros server-side para `GET /api/v1/sales/` — `status`, `cashier`, `date_from`, `date_to`. UI en `/ventas` con patrón draft/applied.
 2. ✅ Endpoint atómico `POST /api/v1/sales/create-and-confirm/` — crea y confirma en una sola transacción. POS actualizado para usarlo.
-3. Exponer reportería de comisiones de tarjeta para utilidad operativa y conciliación.
+3. ✅ Exponer reportería de comisiones de tarjeta para utilidad operativa y conciliación — `card_instrument` en Payment/CardCommissionPlan/LayawayPayment, desglose `card_instruments` en métricas/reportes.
 
 ## Prioridad 8 — Inversionistas (siguiente iteración operativa) ✅
 1. ✅ Reinversión de utilidades — `POST /investors/{id}/reinvest/` + botón "Reinvertir utilidad" en UI (bloqueado cuando profit ≤ 0).

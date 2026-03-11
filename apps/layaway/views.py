@@ -423,6 +423,7 @@ class LayawayViewSet(viewsets.ModelViewSet):
                 method=payment.method,
                 amount=payment.amount,
                 card_type=payment.card_type or None,
+                card_instrument=payment.card_instrument or None,
                 commission_rate=payment.commission_rate,
                 card_plan_code=payment.card_plan_code,
                 card_plan_label=payment.card_plan_label,

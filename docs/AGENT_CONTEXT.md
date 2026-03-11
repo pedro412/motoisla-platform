@@ -18,7 +18,7 @@ Backend API de Moto Isla con Django + DRF + PostgreSQL para operación de tienda
 - `apps/suppliers`: proveedores y parser por proveedor.
 - `apps/imports`: staging/parse/confirm de factura.
 - `apps/purchases`: recepciones de compra.
-- `apps/sales`: ventas POS, pagos, confirmación, anulación.
+- `apps/sales`: ventas POS, pagos (con distinción débito/crédito via `card_instrument`), confirmación, anulación, planes de comisión por instrumento.
 - `apps/layaway`: clientes por teléfono, apartados multiproducto, liquidación, expiración y saldo a favor.
 - `apps/investors`: inversionistas y asignaciones.
 - `apps/ledger`: movimientos financieros de inversionista.
@@ -30,7 +30,7 @@ Implementado y funcional hasta Fase 8 (scope backend) del plan por capas:
 - Fase 0-1: base técnica, JWT, roles, permisos y error contract.
 - Fase 2: catálogo + inventario.
 - Fase 3: imports + compras con parse/confirm y validaciones.
-- Fase 4: POS ventas con idempotencia, void window y override admin.
+- Fase 4: POS ventas con idempotencia, void window y override admin. `card_instrument` (DEBIT/CREDIT) en `Payment`, `CardCommissionPlan` y `LayawayPayment`. Planes de comisión por instrumento: DEBIT_NORMAL, CREDIT_NORMAL, CREDIT_MSI_3.
 - Fase 5: apartados/saldo a favor con vigencia y reglas estrictas.
   - iteración operativa reciente: `Customer` unificado por teléfono, apartados multiproducto, múltiples abonos, extensión de vigencia y estado `REFUNDED` al anular ventas originadas desde apartado.
 - Fase 6: inversionistas + ledger (depósito/retiro/reinversión + asignaciones).
@@ -52,8 +52,8 @@ Implementado y funcional hasta Fase 8 (scope backend) del plan por capas:
 - Inventory: `/api/v1/inventory/movements/`, `/api/v1/inventory/stocks/`
 - Imports: `/api/v1/import-batches/`, `/api/v1/import-lines/{id}/`
 - Purchases: `/api/v1/purchase-receipts/`
-- Sales: `/api/v1/sales/`, `/api/v1/metrics/`
-- Reports: `/api/v1/reports/sales/`
+- Sales: `/api/v1/sales/`, `/api/v1/metrics/`, `/api/v1/card-commission-plans/`
+- Reports: `/api/v1/reports/sales/` (incluye `card_instruments` en `payment_breakdown`)
 - Public catalog: `/api/v1/public/catalog/`, `/api/v1/public/catalog/{sku}/`
 - Layaway: `/api/v1/layaways/`, `/api/v1/customers/`, `/api/v1/customer-credits/`
 - Investors: `/api/v1/investors/`, `/api/v1/investors/me/`

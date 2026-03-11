@@ -20,7 +20,7 @@ from apps.ledger.models import LedgerEntry
 from apps.ledger.services import current_balances
 from apps.layaway.models import CustomerCredit, Layaway
 from apps.purchases.models import PurchaseReceipt, ReceiptStatus
-from apps.sales.models import CardCommissionPlan, CardType, Payment, PaymentMethod, Sale, SaleLine, SaleLineProfitability, SaleProfitabilitySnapshot, SaleStatus, VoidEvent
+from apps.sales.models import CardCommissionPlan, CardInstrument, CardType, Payment, PaymentMethod, Sale, SaleLine, SaleLineProfitability, SaleProfitabilitySnapshot, SaleStatus, VoidEvent
 from apps.sales.profitability import (
     _build_line_chunks,
     allocate_proportionally,
@@ -1473,3 +1473,141 @@ class CreateAndConfirmTests(APITestCase):
         resp = self.client.post("/api/v1/sales/create-and-confirm/", self._payload(), format="json")
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.data["status"], "CONFIRMED")
+
+
+class CardInstrumentTests(APITestCase):
+    """Tests for card_instrument (DEBIT/CREDIT) on payments and commission plans."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(username="ci_admin", password="admin123", role="ADMIN")
+        self.cashier = User.objects.create_user(username="ci_cashier", password="cashier123", role="CASHIER")
+        self.product = Product.objects.create(sku="CI-001", name="Casco CI", default_price=Decimal("100.00"))
+        InventoryMovement.objects.create(
+            product=self.product,
+            movement_type="INBOUND",
+            quantity_delta=Decimal("20"),
+            reference_type="seed",
+            reference_id="ci-seed",
+            note="seed",
+            created_by=self.admin,
+        )
+
+    def _auth(self, username, password):
+        token = self.client.post("/api/v1/auth/token/", {"username": username, "password": password}, format="json").data["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def _plan(self, code):
+        return CardCommissionPlan.objects.get(code=code)
+
+    def _sale_payload(self, plan_code, amount="100.00"):
+        return {
+            "lines": [{"product": str(self.product.id), "qty": "1.00", "unit_price": amount, "unit_cost": "40.00", "discount_pct": "0.00"}],
+            "payments": [{"method": "CARD", "amount": amount, "card_plan_id": str(self._plan(plan_code).id)}],
+        }
+
+    def test_card_plan_list_returns_instrument_aware_plans(self):
+        self._auth("ci_cashier", "cashier123")
+        response = self.client.get("/api/v1/card-commission-plans/")
+        self.assertEqual(response.status_code, 200)
+        plans = response.data["results"]
+        codes = [p["code"] for p in plans]
+        self.assertIn("DEBIT_NORMAL", codes)
+        self.assertIn("CREDIT_NORMAL", codes)
+        self.assertIn("CREDIT_MSI_3", codes)
+        self.assertNotIn("NORMAL", codes)
+        self.assertNotIn("MSI_3", codes)
+        for plan in plans:
+            self.assertIn("card_instrument", plan)
+        debit = next(p for p in plans if p["code"] == "DEBIT_NORMAL")
+        self.assertEqual(debit["card_instrument"], "DEBIT")
+        credit = next(p for p in plans if p["code"] == "CREDIT_NORMAL")
+        self.assertEqual(credit["card_instrument"], "CREDIT")
+
+    def test_sale_with_debit_plan_persists_card_instrument(self):
+        self._auth("ci_cashier", "cashier123")
+        response = self.client.post("/api/v1/sales/", self._sale_payload("DEBIT_NORMAL"), format="json")
+        self.assertEqual(response.status_code, 201)
+        payment = Payment.objects.get(sale_id=response.data["id"])
+        self.assertEqual(payment.card_instrument, CardInstrument.DEBIT)
+        self.assertEqual(payment.card_plan_code, "DEBIT_NORMAL")
+        self.assertEqual(payment.commission_rate, Decimal("0.0200"))
+
+    def test_sale_with_credit_plan_persists_card_instrument(self):
+        self._auth("ci_cashier", "cashier123")
+        response = self.client.post("/api/v1/sales/", self._sale_payload("CREDIT_NORMAL"), format="json")
+        self.assertEqual(response.status_code, 201)
+        payment = Payment.objects.get(sale_id=response.data["id"])
+        self.assertEqual(payment.card_instrument, CardInstrument.CREDIT)
+        self.assertEqual(payment.card_plan_code, "CREDIT_NORMAL")
+        self.assertEqual(payment.commission_rate, Decimal("0.0200"))
+
+    def test_sale_with_credit_msi_plan_persists_card_instrument(self):
+        self._auth("ci_cashier", "cashier123")
+        response = self.client.post("/api/v1/sales/", self._sale_payload("CREDIT_MSI_3"), format="json")
+        self.assertEqual(response.status_code, 201)
+        payment = Payment.objects.get(sale_id=response.data["id"])
+        self.assertEqual(payment.card_instrument, CardInstrument.CREDIT)
+        self.assertEqual(payment.card_plan_code, "CREDIT_MSI_3")
+        self.assertEqual(payment.installments_months, 3)
+        self.assertEqual(payment.commission_rate, Decimal("0.0558"))
+
+    def test_metrics_includes_card_instruments_breakdown(self):
+        self._auth("ci_admin", "admin123")
+        now = timezone.now()
+
+        sale_debit = Sale.objects.create(
+            cashier=self.cashier, status=SaleStatus.CONFIRMED,
+            subtotal=Decimal("100.00"), discount_amount=Decimal("0.00"),
+            total=Decimal("100.00"), confirmed_at=now,
+        )
+        SaleLine.objects.create(
+            sale=sale_debit, product=self.product,
+            qty=Decimal("1.00"), unit_price=Decimal("100.00"),
+            unit_cost=Decimal("40.00"), discount_pct=Decimal("0.00"),
+        )
+        Payment.objects.create(
+            sale=sale_debit, method=PaymentMethod.CARD,
+            amount=Decimal("100.00"), card_instrument=CardInstrument.DEBIT,
+        )
+
+        sale_credit = Sale.objects.create(
+            cashier=self.cashier, status=SaleStatus.CONFIRMED,
+            subtotal=Decimal("200.00"), discount_amount=Decimal("0.00"),
+            total=Decimal("200.00"), confirmed_at=now,
+        )
+        SaleLine.objects.create(
+            sale=sale_credit, product=self.product,
+            qty=Decimal("2.00"), unit_price=Decimal("100.00"),
+            unit_cost=Decimal("40.00"), discount_pct=Decimal("0.00"),
+        )
+        Payment.objects.create(
+            sale=sale_credit, method=PaymentMethod.CARD,
+            amount=Decimal("200.00"), card_instrument=CardInstrument.CREDIT,
+        )
+
+        response = self.client.get("/api/v1/metrics/", {
+            "date_from": (now - timedelta(days=1)).date().isoformat(),
+            "date_to": now.date().isoformat(),
+        })
+        self.assertEqual(response.status_code, 200)
+        card_instruments = {
+            row["card_instrument"]: row
+            for row in response.data["payment_breakdown"]["card_instruments"]
+        }
+        self.assertIn("DEBIT", card_instruments)
+        self.assertIn("CREDIT", card_instruments)
+        self.assertEqual(Decimal(str(card_instruments["DEBIT"]["total_amount"])), Decimal("100.00"))
+        self.assertEqual(card_instruments["DEBIT"]["transactions"], 1)
+        self.assertEqual(Decimal(str(card_instruments["CREDIT"]["total_amount"])), Decimal("200.00"))
+        self.assertEqual(card_instruments["CREDIT"]["transactions"], 1)
+
+    def test_payment_summary_includes_card_instrument(self):
+        self._auth("ci_cashier", "cashier123")
+        resp = self.client.post("/api/v1/sales/", self._sale_payload("DEBIT_NORMAL"), format="json")
+        self.assertEqual(resp.status_code, 201)
+
+        self._auth("ci_admin", "admin123")
+        list_resp = self.client.get("/api/v1/sales/")
+        self.assertEqual(list_resp.status_code, 200)
+        sale_data = next(s for s in list_resp.data["results"] if s["id"] == resp.data["id"])
+        self.assertEqual(sale_data["payments"][0]["card_instrument"], "DEBIT")
