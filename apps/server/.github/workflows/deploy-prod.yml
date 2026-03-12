@@ -1,0 +1,147 @@
+name: Deploy Production (Server)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-server-prod-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  quality-gates:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: motoisla
+          POSTGRES_USER: motoisla
+          POSTGRES_PASSWORD: motoisla
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U motoisla -d motoisla"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DJANGO_SECRET_KEY: ci-check-secret-key-railway-production-2026-03-10-a9f3k2m8q1x7v6n4c0
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DJANGO_CSRF_TRUSTED_ORIGINS: http://localhost:8000
+      DJANGO_CORS_ALLOWED_ORIGINS: http://localhost:3000
+      DJANGO_CORS_ALLOW_CREDENTIALS: "True"
+      DJANGO_CORS_ALLOW_ALL_ORIGINS: "False"
+      DJANGO_SECURE_SSL_REDIRECT: "False"
+      DJANGO_SESSION_COOKIE_SECURE: "False"
+      DJANGO_CSRF_COOKIE_SECURE: "False"
+      DJANGO_SECURE_HSTS_SECONDS: "0"
+      DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: "False"
+      DJANGO_SECURE_HSTS_PRELOAD: "False"
+      DATABASE_URL: postgresql://motoisla:motoisla@localhost:5432/motoisla
+      POSTGRES_DB: motoisla
+      POSTGRES_USER: motoisla
+      POSTGRES_PASSWORD: motoisla
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      MEDIA_PROVIDER: R2
+      R2_ACCOUNT_ID: ci
+      R2_BUCKET: ci
+      R2_ACCESS_KEY_ID: ci
+      R2_SECRET_ACCESS_KEY: ci
+      R2_PUBLIC_BASE_URL: https://example.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python manage.py test
+
+      - name: Run deploy checks
+        env:
+          DJANGO_DEBUG: "False"
+          DJANGO_ALLOWED_HOSTS: example.com
+          DJANGO_CSRF_TRUSTED_ORIGINS: https://example.com
+          DJANGO_CORS_ALLOWED_ORIGINS: https://example.com
+          DJANGO_SECURE_SSL_REDIRECT: "True"
+          DJANGO_SESSION_COOKIE_SECURE: "True"
+          DJANGO_CSRF_COOKIE_SECURE: "True"
+          DJANGO_SECURE_HSTS_SECONDS: "31536000"
+          DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: "True"
+          DJANGO_SECURE_HSTS_PRELOAD: "True"
+        run: python manage.py check --deploy --fail-level WARNING
+
+  deploy:
+    name: Deploy Railway
+    runs-on: ubuntu-latest
+    needs: quality-gates
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Validate deploy secrets
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+          PROD_API_HEALTH_URL: ${{ secrets.PROD_API_HEALTH_URL }}
+        run: |
+          for var in RAILWAY_TOKEN RAILWAY_SERVICE_ID PROD_API_HEALTH_URL; do
+            if [ -z "${!var}" ]; then
+              echo "Falta secret ${var}"
+              exit 1
+            fi
+          done
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+        run: |
+          set -euo pipefail
+          args=(up --service "${RAILWAY_SERVICE_ID}" --ci)
+          if [ -n "${RAILWAY_PROJECT_ID}" ]; then
+            args+=(--project "${RAILWAY_PROJECT_ID}")
+          fi
+          if [ -n "${RAILWAY_ENVIRONMENT_ID}" ]; then
+            args+=(--environment "${RAILWAY_ENVIRONMENT_ID}")
+          fi
+          railway "${args[@]}"
+
+      - name: Smoke test backend
+        env:
+          PROD_API_HEALTH_URL: ${{ secrets.PROD_API_HEALTH_URL }}
+        run: |
+          curl --fail --show-error --silent "${PROD_API_HEALTH_URL}" >/dev/null
+
+      - name: Summary
+        run: |
+          {
+            echo "## Server deploy completado"
+            echo "- Tag: \`${GITHUB_REF_NAME}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

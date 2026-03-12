@@ -1,0 +1,198 @@
+# Moto Isla Server
+
+Backend de Moto Isla para operación de tienda: catálogo, inventario, compras, ventas POS, apartados, inversionistas/ledger, gastos recurrentes y reportes.
+
+Base técnica: **Django + DRF + JWT + PostgreSQL**, listo para correr local con Docker.
+
+## Estado actual del backend
+- Core backend v1 prácticamente cerrado para operación local.
+- Módulos funcionales: catálogo, inventario, compras/imports, ventas, cancelación, apartados, inversionistas/ledger, gastos, auditoría, métricas y reportes.
+- `reports/sales` ya separa utilidad tienda vs participación de inversionistas y valora inventario por ownership económico.
+- Endpoint público para frontend catálogo-only disponible (`/api/v1/public/catalog/`).
+- Hardening base aplicado (settings de seguridad, checklist, runbook, colección QA, DoD).
+
+## Lo más importante (reglas críticas)
+- SKU único en catálogo.
+- Venta confirmada es la que impacta stock/métricas/ledger.
+- Reintentos de confirmación no deben duplicar impacto.
+- Cancelación (`void`) revierte inventario y, para productos de inversionista, revierte también asignación/ledger.
+- Si una venta anulada provenía de un apartado liquidado, el apartado pasa a `REFUNDED` para conservar trazabilidad.
+- Descuento cajero >10% requiere override admin.
+- Apartados vencidos pasan a saldo a favor, no reembolso en efectivo.
+
+## Stack
+- Django 5.x
+- Django REST Framework
+- Simple JWT
+- PostgreSQL 16
+- Gunicorn + Whitenoise
+- Docker / Docker Compose
+
+## Estructura principal
+- `config/`: configuración Django.
+- `apps/api_urls.py`: enrutado API `v1`.
+- `apps/accounts`: usuario custom, roles, PIN de estación de trabajo.
+- `apps/catalog`: productos, imágenes y catálogo público readonly.
+- `apps/inventory`: movimientos y stock agregado.
+- `apps/imports`: parse/edición/confirmación de factura pegada.
+- `apps/purchases`: recepciones de compra.
+- `apps/sales`: ventas, confirmación, anulación, métricas y reportes.
+- `apps/layaway`: clientes, apartados multiproducto, saldo a favor y vencimiento automático/manual.
+- `apps/investors` + `apps/ledger`: inversionistas, asignaciones y movimientos financieros.
+- `apps/expenses`: gastos administrativos.
+- `apps/audit`: auditoría de eventos críticos.
+
+## Quickstart local
+1. Copia variables base:
+```bash
+cp .env.example .env
+```
+2. Levanta entorno:
+```bash
+docker compose up --build
+```
+3. Migraciones iniciales:
+```bash
+docker compose run --rm web python manage.py makemigrations
+docker compose run --rm web python manage.py migrate
+```
+4. Seed de roles:
+```bash
+docker compose run --rm web python manage.py seed_roles
+```
+5. Seed base de proveedores/parsers (incluye MYESA):
+```bash
+docker compose run --rm web python manage.py seed_suppliers_parsers
+```
+6. Seed base de taxonomy de productos (marcas/tipos):
+```bash
+docker compose run --rm web python manage.py seed_product_taxonomy
+```
+
+Nota: al iniciar el contenedor `web`, los seeds `seed_suppliers_parsers` y `seed_product_taxonomy` corren automáticamente (idempotentes). Si necesitas omitirlos: `SKIP_SUPPLIER_SEED=1` y/o `SKIP_TAXONOMY_SEED=1`.
+
+## Comandos útiles
+- `make up`
+- `make down`
+- `make logs`
+- `make makemigrations`
+- `make migrate`
+- `make test`
+- `make lint`
+- `make checkdeploy`
+
+## Endpoints clave
+- Health:
+  - `GET /health/`
+- Auth:
+  - `POST /api/v1/auth/token/`
+  - `POST /api/v1/auth/token/refresh/`
+  - `POST /api/v1/auth/pin-login/` (login con PIN de 6 dígitos, throttled 10/min)
+  - `POST /api/v1/auth/pin/` (autenticado: establecer/eliminar PIN)
+- Catálogo interno:
+  - `GET/POST /api/v1/products/`
+  - `GET/PATCH/DELETE /api/v1/products/{id}/`
+  - filtros soportados en `GET /api/v1/products/`: `q`, `brand`, `product_type`, `has_stock`
+  - `POST /api/v1/media/uploads/presign/`
+  - `POST /api/v1/media/uploads/complete/`
+  - `GET/POST /api/v1/products/{id}/images/`
+  - `PATCH/DELETE /api/v1/products/{id}/images/{image_id}/`
+  - `GET/POST /api/v1/brands/`
+  - `GET/POST /api/v1/product-types/`
+- Catálogo público readonly:
+  - `GET /api/v1/public/catalog/`
+  - `GET /api/v1/public/catalog/{sku}/`
+- Inventario:
+  - `GET/POST /api/v1/inventory/movements/`
+  - `GET /api/v1/inventory/movements/?product=<uuid>`
+  - `GET /api/v1/inventory/stocks/`
+- Compras:
+  - `GET/POST /api/v1/purchase-receipts/`
+  - `POST /api/v1/purchase-receipts/{id}/confirm/`
+  - `GET/POST /api/v1/import-batches/`
+  - `POST /api/v1/import-batches/preview-confirm/` (parse en cliente + confirmación transaccional)
+  - `POST /api/v1/import-batches/{id}/parse/` (legacy/compatibilidad)
+  - `POST /api/v1/import-batches/{id}/confirm/` (legacy/compatibilidad)
+  - `GET /api/v1/suppliers/`
+  - `GET /api/v1/supplier-parsers/?supplier=<uuid>`
+- Ventas:
+  - `GET/POST /api/v1/sales/`
+  - `GET /api/v1/sales/{id}/`
+  - `POST /api/v1/sales/{id}/confirm/`
+  - `POST /api/v1/sales/{id}/void/`
+  - `GET /api/v1/card-commission-plans/`
+  - `GET /api/v1/metrics/`
+  - `GET /api/v1/reports/sales/`
+- Clientes:
+  - `GET/POST /api/v1/customers/`
+  - `GET /api/v1/customers/{id}/`
+- Gastos:
+  - `GET/POST /api/v1/expenses/`
+  - `GET/PATCH/DELETE /api/v1/expenses/{id}/`
+  - `GET /api/v1/expenses/summary/`
+  - `POST /api/v1/expenses/generate-fixed/`
+  - `GET/POST /api/v1/fixed-expense-templates/`
+  - `GET/PATCH /api/v1/fixed-expense-templates/{id}/`
+- Apartados:
+  - `GET/POST /api/v1/layaways/`
+  - `POST /api/v1/layaways/{id}/payments/`
+  - `POST /api/v1/layaways/{id}/settle/`
+  - `POST /api/v1/layaways/{id}/extend/`
+  - `POST /api/v1/layaways/{id}/expire/`
+  - `POST /api/v1/customer-credits/{id}/apply/`
+- Inversionistas:
+  - `GET/POST /api/v1/investors/` (admin)
+  - `GET/PATCH /api/v1/investors/{id}/` (admin)
+  - `POST /api/v1/investors/{id}/deposit/` (admin)
+  - `POST /api/v1/investors/{id}/withdraw/` (admin)
+  - `POST /api/v1/investors/{id}/reinvest/` (admin)
+  - `GET /api/v1/investors/{id}/ledger/` (admin)
+  - `GET/POST /api/v1/investors/assignments/` (admin)
+  - `GET /api/v1/investors/me/`
+  - `GET /api/v1/investors/me/ledger/`
+
+## Calidad y validación esperada antes de cambios grandes
+- Ejecutar `make lint`.
+- Ejecutar `make test`.
+- Para checks de despliegue: `make checkdeploy`.
+- Mantener contratos API existentes (`code`, `detail`, `fields` y paginación DRF).
+
+## Pendientes y backlog actual (alto nivel)
+- Seguimiento operativo post-hardening:
+  - validar CORS/CSRF con dominios reales en staging/prod.
+  - baseline de performance p95 con tráfico real.
+- Reportería financiera avanzada (iterativa):
+  - cortes/márgenes ejecutivos adicionales.
+- Frontend:
+  - consumir catálogo público y flujos POS/admin con contratos actuales.
+  - cambios visuales del cliente (breadcrumbs, headers de detalle, surfaces dark/slate) no cambian el contrato API.
+
+## Notas recientes
+- `Product` ya expone `cost_price` además de `default_price`.
+- `PATCH /api/v1/products/{id}/` soporta ajuste de stock con `stock` + `stock_adjust_reason`, creando movimiento auditado.
+- Reimportar una factura sobre un SKU existente actualiza `cost_price` y `default_price` del producto.
+- `Payment` ahora guarda snapshot de comisión de tarjeta (`commission_rate`, plan y meses) para preservar utilidad histórica.
+- `GET /api/v1/sales/` expone `cashier_username`, cliente ligado y `can_void` para el historial operativo.
+- `GET /api/v1/sales/{id}/` expone líneas enriquecidas (`product_name`, `product_sku`) y resumen del cliente para historial y lealtad.
+- `Layaway` ahora soporta cliente unificado por teléfono, líneas múltiples, múltiples abonos, extensión y estados `SETTLED` / `REFUNDED`.
+- `Expense` ahora soporta plantillas mensuales (`FixedExpenseTemplate`), generación idempotente y estados `PENDING` / `PAID` / `CANCELLED`.
+- `GET /api/v1/reports/sales/` ahora expone `investor_metrics` e `inventory_snapshot` con buckets de inventario propio vs inventario fondeado por inversionistas.
+- El flujo frontend de importación puede mostrar `unit_price` como `Costo + IVA`; backend mantiene el mismo payload (`unit_cost`, `unit_price`, `public_price`) sin cambios de contrato.
+- `User` ahora tiene `pin_hash` para PIN de 6 dígitos (workstation lock screen). `UserListSerializer` expone `has_pin` (bool). PIN login throttled a 10/min por IP.
+
+## Convenciones
+- Roles: `ADMIN`, `CASHIER`, `INVESTOR`.
+- Error contract: `code`, `detail`, `fields`.
+- Listados: `count`, `next`, `previous`, `results`.
+- Rutas base de API: `/api/v1/`.
+
+## Documentación extendida
+- Índice general: `docs/README.md`
+- Checklist R2 prod: `docs/R2_PRODUCTION_CHECKLIST.md`
+- Contexto para agentes: `docs/AGENT_CONTEXT.md`
+- Estado contra plan maestro: `docs/PLAN_STATUS.md`
+- Backlog ordenado: `docs/NEXT_STEPS.md`
+- Seguridad de release: `docs/SECURITY_CHECKLIST.md`
+- Runbook operativo: `docs/RUNBOOK.md`
+- Colección QA: `docs/API_QA_COLLECTION.http`
+- Definition of Done: `docs/DOD_V1.md`

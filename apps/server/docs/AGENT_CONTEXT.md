@@ -1,0 +1,86 @@
+# Agent Context (Moto Isla Server)
+
+## 1. Objetivo del repositorio
+Backend API de Moto Isla con Django + DRF + PostgreSQL para operación de tienda (POS), inventario, compras, apartados y ledger de inversionistas.
+
+## 2. Stack actual
+- Django 5.x
+- Django REST Framework
+- SimpleJWT
+- PostgreSQL 16
+- Gunicorn + Whitenoise
+- Docker Compose (`web` + `db`)
+
+## 3. Estructura de módulos
+- `apps/accounts`: usuario custom, roles, seed de grupos, user CRUD API, password reset y PIN de estación de trabajo.
+- `apps/catalog`: productos e imágenes.
+- `apps/inventory`: movimientos e inventario agregado.
+- `apps/suppliers`: proveedores y parser por proveedor.
+- `apps/imports`: staging/parse/confirm de factura.
+- `apps/purchases`: recepciones de compra.
+- `apps/sales`: ventas POS, pagos (con distinción débito/crédito via `card_instrument`), confirmación, anulación, planes de comisión por instrumento.
+- `apps/layaway`: clientes por teléfono, apartados multiproducto, liquidación, expiración y saldo a favor.
+- `apps/investors`: inversionistas y asignaciones.
+- `apps/ledger`: movimientos financieros de inversionista.
+- `apps/audit`: auditoría de eventos críticos.
+- `apps/expenses`: gastos mensuales, plantillas fijas y resumen operativo.
+
+## 4. Estado funcional (resumen)
+Implementado y funcional hasta Fase 8 (scope backend) del plan por capas:
+- Fase 0-1: base técnica, JWT, roles, permisos y error contract.
+- Fase 2: catálogo + inventario.
+- Fase 3: imports + compras con parse/confirm y validaciones.
+- Fase 4: POS ventas con idempotencia, void window y override admin. `card_instrument` (DEBIT/CREDIT) en `Payment`, `CardCommissionPlan` y `LayawayPayment`. Planes de comisión por instrumento: DEBIT_NORMAL, CREDIT_NORMAL, CREDIT_MSI_3.
+- Fase 5: apartados/saldo a favor con vigencia y reglas estrictas.
+  - iteración operativa reciente: `Customer` unificado por teléfono, apartados multiproducto, múltiples abonos, extensión de vigencia y estado `REFUNDED` al anular ventas originadas desde apartado.
+- Fase 6: inversionistas + ledger (depósito/retiro/reinversión + asignaciones).
+  - iteración operativa reciente: alta de inversionista sin usuario obligatorio, balances en list/detail, compra transaccional de productos y `investor_assignable_qty` en catálogo.
+- Fase 7: métricas/reportes + auditoría ampliada + módulo gastos recurrentes (plantillas, generación y resumen).
+- Fase 8: hardening base (security/performance/docs operativas).
+
+## 5. Convenciones importantes
+- Idioma de plataforma: admin y backend base en inglés (`LANGUAGE_CODE = en-us`).
+- API errors: `code`, `detail`, `fields`.
+- Roles fuente de verdad: `Group` (`ADMIN`, `CASHIER`, `INVESTOR`) con fallback a `user.role`.
+- Rutas API bajo `/api/v1/`.
+- Operación local recomendada con Docker.
+
+## 6. Endpoints clave
+- Auth: `/api/v1/auth/token/`, `/api/v1/auth/token/refresh/`, `/api/v1/auth/password-reset/`, `/api/v1/auth/password-reset-confirm/`, `/api/v1/auth/pin-login/`, `/api/v1/auth/pin/`
+- Users: `/api/v1/users/` (ADMIN-only CRUD, DELETE disabled → use is_active toggle)
+- Catalog: `/api/v1/products/`, `/api/v1/products/{id}/images/`, `/api/v1/media/uploads/(presign|complete)/`
+- Inventory: `/api/v1/inventory/movements/`, `/api/v1/inventory/stocks/`
+- Imports: `/api/v1/import-batches/`, `/api/v1/import-lines/{id}/`
+- Purchases: `/api/v1/purchase-receipts/`
+- Sales: `/api/v1/sales/`, `/api/v1/metrics/`, `/api/v1/card-commission-plans/`
+- Reports: `/api/v1/reports/sales/` (incluye `card_instruments` en `payment_breakdown`)
+- Public catalog: `/api/v1/public/catalog/`, `/api/v1/public/catalog/{sku}/`
+- Layaway: `/api/v1/layaways/`, `/api/v1/customers/`, `/api/v1/customer-credits/`
+- Investors: `/api/v1/investors/`, `/api/v1/investors/me/`
+  - incluye `POST /api/v1/investors/{id}/purchases/` y `GET /api/v1/investors/{id}/ledger/` paginado
+- Expenses: `/api/v1/expenses/`
+  - incluye `/api/v1/expenses/summary/`, `/api/v1/expenses/generate-fixed/` y `/api/v1/fixed-expense-templates/`
+
+## 7. Comandos de trabajo
+- `make up`
+- `make migrate`
+- `make test`
+- `make lint`
+- `docker compose run --rm web python manage.py seed_roles`
+
+## 8. Admin (visibilidad operativa)
+Registrado:
+- accounts, catalog, inventory, purchases, sales, layaway, investors, ledger.
+
+## 9. Riesgos actuales
+- Fase 8 backend cerrada:
+  - checklist de seguridad documentado
+  - colección API QA disponible
+  - runbook y DoD v1 documentados
+  - índices y optimizaciones de query en módulos críticos
+- Reportería financiera ya separa utilidad tienda vs participación de inversionistas, pero sigue iterativa para cortes más finos.
+- Seguimiento operativo pendiente fuera de desarrollo backend:
+  - validar CSRF/CORS con dominios reales en staging/prod
+  - capturar baseline de performance p95 con tráfico real
+- En frontend, la convención reciente de UI para vistas detalle es: breadcrumb superior + back button a la izquierda + acción principal a la derecha; no implica cambios de API.
+- En imports, el cliente ahora presenta `unit_price` como `Costo + IVA` para evitar confusión semántica, pero el backend sigue recibiendo los mismos campos.

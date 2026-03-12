@@ -1,0 +1,188 @@
+### Variables sugeridas
+@baseUrl = http://localhost:8000
+@accessToken = REPLACE_ME
+@saleId = REPLACE_ME
+@productId = REPLACE_ME
+@investorId = REPLACE_ME
+
+### Health
+GET {{baseUrl}}/health/
+
+### Login JWT
+POST {{baseUrl}}/api/v1/auth/token/
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+### Refresh JWT
+POST {{baseUrl}}/api/v1/auth/token/refresh/
+Content-Type: application/json
+
+{
+  "refresh": "REPLACE_ME"
+}
+
+### --- User Management (ADMIN) ---
+
+### List Users
+GET {{baseUrl}}/api/v1/users/?q=
+Authorization: Bearer {{accessToken}}
+
+### Create User
+POST {{baseUrl}}/api/v1/users/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "email": "cajero@motoisla.mx",
+  "first_name": "Nuevo",
+  "last_name": "Cajero",
+  "role": "CASHIER",
+  "password": "SecurePass123!"
+}
+
+### Update User
+PATCH {{baseUrl}}/api/v1/users/2/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "first_name": "Nombre Actualizado",
+  "is_active": false
+}
+
+### --- Password Reset (Public) ---
+
+### Request Password Reset
+POST {{baseUrl}}/api/v1/auth/password-reset/
+Content-Type: application/json
+
+{
+  "email": "admin@motoisla.mx"
+}
+
+### Confirm Password Reset
+POST {{baseUrl}}/api/v1/auth/password-reset-confirm/
+Content-Type: application/json
+
+{
+  "uid": "REPLACE_ME",
+  "token": "REPLACE_ME",
+  "new_password": "NewSecurePass123!"
+}
+
+### Metrics
+GET {{baseUrl}}/api/v1/metrics/?date_from=2026-01-01&date_to=2026-12-31&top_limit=10
+Authorization: Bearer {{accessToken}}
+
+### Sales Report
+GET {{baseUrl}}/api/v1/reports/sales/?date_from=2026-01-01&date_to=2026-12-31
+Authorization: Bearer {{accessToken}}
+
+### Create Product
+POST {{baseUrl}}/api/v1/products/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "sku": "QA-SKU-001",
+  "name": "Producto QA",
+  "default_price": "99.00",
+  "is_active": true
+}
+
+### Search Product
+GET {{baseUrl}}/api/v1/products/?q=QA-SKU
+Authorization: Bearer {{accessToken}}
+
+### Public Catalog List (no auth)
+GET {{baseUrl}}/api/v1/public/catalog/?q=QA
+
+### Public Catalog Detail by SKU (no auth)
+GET {{baseUrl}}/api/v1/public/catalog/QA-SKU-001/
+
+### Manual Inventory Adjustment
+POST {{baseUrl}}/api/v1/inventory/movements/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "product": "{{productId}}",
+  "movement_type": "ADJUSTMENT",
+  "quantity_delta": "2.00",
+  "reference_type": "qa_adjustment",
+  "reference_id": "qa-001",
+  "note": "Ajuste QA"
+}
+
+### Create Sale (draft)
+POST {{baseUrl}}/api/v1/sales/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "lines": [
+    {
+      "product": "{{productId}}",
+      "qty": "1.00",
+      "unit_price": "99.00",
+      "unit_cost": "50.00",
+      "discount_pct": "0.00"
+    }
+  ],
+  "payments": [
+    {
+      "method": "CASH",
+      "amount": "99.00"
+    }
+  ]
+}
+
+### Confirm Sale
+POST {{baseUrl}}/api/v1/sales/{{saleId}}/confirm/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{}
+
+### Void Sale
+POST {{baseUrl}}/api/v1/sales/{{saleId}}/void/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "reason": "QA void"
+}
+
+### Investor Deposit
+POST {{baseUrl}}/api/v1/investors/{{investorId}}/deposit/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "amount": "1000.00",
+  "note": "QA deposit"
+}
+
+### Investor Purchase
+POST {{baseUrl}}/api/v1/investors/{{investorId}}/purchases/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "tax_rate_pct": "16.00",
+  "lines": [
+    {
+      "product": "{{productId}}",
+      "qty": "1.00",
+      "unit_cost_gross": "58.00"
+    }
+  ]
+}
+
+### Investor Ledger
+GET {{baseUrl}}/api/v1/investors/{{investorId}}/ledger/
+Authorization: Bearer {{accessToken}}
