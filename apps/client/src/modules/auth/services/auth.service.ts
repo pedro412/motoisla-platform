@@ -1,0 +1,78 @@
+import { ApiError } from "@/lib/api/errors";
+import { httpClient } from "@/lib/api/http-client";
+import type { AuthSession, PasswordResetConfirm, PasswordResetRequest } from "@/lib/types/auth";
+
+interface LoginResponse {
+  session: AuthSession;
+}
+
+interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  const data = await response.json();
+  if (!response.ok) {
+    throw new ApiError({
+      code: data.code ?? `HTTP_${response.status}`,
+      detail: data.detail ?? "Request failed",
+      fields: data.fields ?? {},
+      status: response.status,
+    });
+  }
+  return data as T;
+}
+
+export const authService = {
+  async login(input: LoginRequest): Promise<AuthSession> {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(input),
+    });
+    const payload = await parseResponse<LoginResponse>(response);
+    return payload.session;
+  },
+
+  async logout(): Promise<void> {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+  },
+
+  async getSession(): Promise<AuthSession> {
+    const response = await fetch("/api/auth/session", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const payload = await parseResponse<{ session: AuthSession }>(response);
+    return payload.session;
+  },
+
+  async requestPasswordReset(data: PasswordResetRequest) {
+    return httpClient.post<PasswordResetRequest, { detail: string }>("/auth/password-reset/", data);
+  },
+
+  async confirmPasswordReset(data: PasswordResetConfirm) {
+    return httpClient.post<PasswordResetConfirm, { detail: string }>("/auth/password-reset-confirm/", data);
+  },
+
+  async pinLogin(input: { username: string; pin: string }): Promise<AuthSession> {
+    const response = await fetch("/api/auth/pin-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(input),
+    });
+    const payload = await parseResponse<LoginResponse>(response);
+    return payload.session;
+  },
+
+  async setPin(data: { pin: string | null; current_password: string }) {
+    return httpClient.post<typeof data, { detail: string; has_pin: boolean }>("/auth/pin/", data);
+  },
+};

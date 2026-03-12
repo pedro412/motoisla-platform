@@ -1,0 +1,135 @@
+"use client";
+
+import { Box, CircularProgress, Toolbar } from "@mui/material";
+import { useMemo, useState, type ReactNode, useEffect } from "react";
+import { usePathname } from "next/navigation";
+
+import { AppSidebar, DRAWER_WIDTH } from "@/components/layout/app-sidebar";
+import { AppTopbar } from "@/components/layout/app-topbar";
+import { LockScreen } from "@/components/layout/lock-screen";
+import { privateNavItems } from "@/config/navigation";
+import { useInactivityTimer } from "@/hooks/use-inactivity-timer";
+import { authService } from "@/modules/auth/services/auth.service";
+import { useSessionStore } from "@/store/session-store";
+import { useWorkstationStore } from "@/store/workstation-store";
+
+interface AppShellProps {
+  children: ReactNode;
+}
+
+function getTitleFromPath(pathname: string): string {
+  if (pathname === "/investor" || pathname.startsWith("/investor/")) {
+    return "Inversionista";
+  }
+
+  if (pathname === "/purchases" || pathname.startsWith("/purchases/receipts")) {
+    return "Compras";
+  }
+
+  if (pathname.startsWith("/purchases/imports")) {
+    return "Compras";
+  }
+
+  if (pathname.startsWith("/products")) {
+    return "Productos";
+  }
+
+  if (pathname.startsWith("/investors")) {
+    return "Inversionistas";
+  }
+
+  if (pathname.startsWith("/admin/reports")) {
+    return "Reportes";
+  }
+
+  if (pathname.startsWith("/expenses")) {
+    return "Gastos";
+  }
+
+  if (pathname.startsWith("/pos")) {
+    return "Nueva Venta";
+  }
+
+  if (pathname.startsWith("/ventas")) {
+    return "Ventas";
+  }
+
+  if (pathname.startsWith("/apartados")) {
+    return "Apartados";
+  }
+
+  if (pathname.startsWith("/settings")) {
+    return "Configuración";
+  }
+
+  return "MotoIsla";
+}
+
+export function AppShell({ children }: AppShellProps) {
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const { session, hydrated, setHydrated, setSession } = useSessionStore();
+  const isLocked = useWorkstationStore((s) => s.isLocked);
+
+  useInactivityTimer(session.isAuthenticated);
+
+  const title = useMemo(() => getTitleFromPath(pathname), [pathname]);
+
+  useEffect(() => {
+    if (hydrated) {
+      return;
+    }
+
+    authService
+      .getSession()
+      .then((nextSession) => {
+        setSession(nextSession);
+      })
+      .finally(() => {
+        setHydrated(true);
+      });
+  }, [hydrated, setHydrated, setSession]);
+
+  const navItems = useMemo(() => {
+    const role = session.role;
+    if (!role) {
+      return privateNavItems;
+    }
+
+    return privateNavItems.filter((item) => {
+      if (!item.requiredRoles || item.requiredRoles.length === 0) {
+        return true;
+      }
+      return item.requiredRoles.includes(role);
+    });
+  }, [session.role]);
+
+  if (!hydrated) {
+    return (
+      <Box sx={{ minHeight: "100dvh", display: "grid", placeItems: "center" }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ display: "flex", minHeight: "100dvh" }}>
+      {isLocked && <LockScreen />}
+      <AppTopbar title={title} onOpenMobileMenu={() => setMobileOpen(true)} />
+      <AppSidebar navItems={navItems} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
+
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: { xs: 2, md: 3 },
+          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          ml: { md: `${DRAWER_WIDTH}px` },
+        }}
+      >
+        <Toolbar />
+        {children}
+      </Box>
+    </Box>
+  );
+}
