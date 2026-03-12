@@ -43,9 +43,12 @@ Este backlog mantiene el orden del plan original y deja tareas ejecutables para 
 - evaluar cache externa (Redis/CDN) para tráfico alto
 
 ## Prioridad 6 — Seguimiento operativo
-1. Validar CSRF/CORS con dominios reales en staging/prod.
+1. ✅ Validar CSRF/CORS con dominios reales en staging/prod — CORS methods/headers restringidos.
 2. Capturar baseline de performance (latencia p95 + query plans) con tráfico real.
 3. Endurecer concurrencia en compras de inversionistas para evitar sobreasignación bajo requests simultáneos.
+4. ✅ Rate limiting global (anon 60/min, user 300/min) + JWT refresh token rotation con blacklist.
+5. ✅ Admin path ofuscado (`/backoffice-mi/`).
+6. Evaluar `django-axes` para lockout de login si se expone a internet público sin VPN.
 
 ## Prioridad 7 — Ventas (siguiente iteración UX/operación) ✅
 1. ✅ Filtros server-side para `GET /api/v1/sales/` — `status`, `cashier`, `date_from`, `date_to`. UI en `/ventas` con patrón draft/applied.

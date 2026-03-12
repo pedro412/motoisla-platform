@@ -7,7 +7,19 @@
 - Migraciones: `make migrate`
 - Tests: `make test`
 
-## 2) Incidencias comunes
+## 2) Mantenimiento periódico
+
+### Flush de tokens expirados (diario)
+Refresh tokens rotados se almacenan en blacklist. Limpiar tokens expirados:
+```bash
+docker compose exec -T web python manage.py flushexpiredtokens
+```
+Configurado como cron diario a las 3:00 AM.
+
+### Django Admin
+Acceso en `/backoffice-mi/` (no `/admin/`).
+
+## 3) Incidencias comunes
 
 ### API no responde
 1. Verificar contenedores: `docker compose ps`
@@ -54,6 +66,6 @@ Si un balance de ledger no cuadra con lo esperado:
    - Exit code 0 = todo consistente. Exit code 1 = hay mismatches (revisar output).
 3. Si hay mismatch en `qty_sold`: revisar `SaleLineProfitability` para la asignación afectada y crear entrada compensatoria en ledger si aplica. **Nunca editar entradas de ledger existentes** (el modelo lo prohíbe a nivel de código).
 
-## 3) Escalamiento
+## 4) Escalamiento
 - Si hay pérdida de datos, congelar operación de escritura y exportar evidencia (logs + IDs afectados).
 - Si hay impacto de seguridad, rotar secretos y bloquear acceso externo temporalmente.
