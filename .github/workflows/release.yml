@@ -20,6 +20,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: release
@@ -140,7 +141,18 @@ jobs:
             -X POST \
             -f ref="refs/tags/${VERSION}" \
             -f sha="${GITHUB_SHA}" >/dev/null
-          echo "Tag ${VERSION} creado — deploy-prod.yml se encargará del deploy"
+          echo "Tag ${VERSION} creado"
+
+      - name: Trigger deploy-prod workflow
+        env:
+          VERSION: ${{ needs.prepare.outputs.next_version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run deploy-prod.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref "main" \
+            -f tag="${VERSION}"
+          echo "deploy-prod.yml disparado con tag=${VERSION}"
 
       - name: Summary
         env:
@@ -150,7 +162,7 @@ jobs:
             echo "## Release iniciada"
             echo "- Version: \`${VERSION}\`"
             echo "- SHA: \`${GITHUB_SHA}\`"
-            echo "- El tag trigger ejecutará deploy-prod.yml"
+            echo "- deploy-prod.yml disparado via workflow_dispatch"
           } >> "${GITHUB_STEP_SUMMARY}"
 
   dry-run-summary:

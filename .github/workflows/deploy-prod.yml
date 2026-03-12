@@ -4,18 +4,41 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to deploy (e.g. v2.0.0)"
+        type: string
+        required: true
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
-  group: deploy-prod-${{ github.ref_name }}
+  group: deploy-prod
   cancel-in-progress: false
 
 jobs:
+  resolve-ref:
+    name: Resolve Tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Resolve tag name
+        id: resolve
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          fi
+
   detect-changes:
     name: Detect Changes
     runs-on: ubuntu-latest
+    needs: resolve-ref
     outputs:
       client_changed: ${{ steps.changes.outputs.client_changed }}
       server_changed: ${{ steps.changes.outputs.server_changed }}
@@ -23,29 +46,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.resolve-ref.outputs.tag }}
           fetch-depth: 0
 
       - name: Compare with previous tag
         id: changes
+        env:
+          CURRENT_TAG: ${{ needs.resolve-ref.outputs.tag }}
         run: |
-          current_tag="${GITHUB_REF_NAME}"
-          previous_tag="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | grep -B1 "^${current_tag}$" | head -n1)"
+          previous_tag="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | grep -B1 "^${CURRENT_TAG}$" | head -n1)"
 
-          if [ "${previous_tag}" = "${current_tag}" ] || [ -z "${previous_tag}" ]; then
+          if [ "${previous_tag}" = "${CURRENT_TAG}" ] || [ -z "${previous_tag}" ]; then
             echo "First tag or no previous tag found — deploying both"
             echo "client_changed=true" >> "${GITHUB_OUTPUT}"
             echo "server_changed=true" >> "${GITHUB_OUTPUT}"
           else
-            echo "Comparing ${previous_tag}..${current_tag}"
+            echo "Comparing ${previous_tag}..${CURRENT_TAG}"
 
             client_changed="false"
             server_changed="false"
 
-            if git diff --name-only "${previous_tag}..${current_tag}" | grep -q '^apps/client/'; then
+            if git diff --name-only "${previous_tag}..${CURRENT_TAG}" | grep -q '^apps/client/'; then
               client_changed="true"
             fi
 
-            if git diff --name-only "${previous_tag}..${current_tag}" | grep -q '^apps/server/'; then
+            if git diff --name-only "${previous_tag}..${CURRENT_TAG}" | grep -q '^apps/server/'; then
               server_changed="true"
             fi
 
@@ -53,15 +78,15 @@ jobs:
             echo "server_changed=${server_changed}" >> "${GITHUB_OUTPUT}"
           fi
 
-          echo "Client changed: $(cat "${GITHUB_OUTPUT}" | grep client_changed)"
-          echo "Server changed: $(cat "${GITHUB_OUTPUT}" | grep server_changed)"
+          echo "Client changed: $(grep client_changed "${GITHUB_OUTPUT}")"
+          echo "Server changed: $(grep server_changed "${GITHUB_OUTPUT}")"
 
   # ── Server ──────────────────────────────────────────────
 
   server-quality:
     name: Server Quality Gates
     runs-on: ubuntu-latest
-    needs: detect-changes
+    needs: [resolve-ref, detect-changes]
     if: needs.detect-changes.outputs.server_changed == 'true'
     defaults:
       run:
@@ -109,6 +134,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-ref.outputs.tag }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -140,7 +167,7 @@ jobs:
   deploy-server:
     name: Deploy Server (Railway)
     runs-on: ubuntu-latest
-    needs: [detect-changes, server-quality]
+    needs: [resolve-ref, detect-changes, server-quality]
     if: needs.detect-changes.outputs.server_changed == 'true'
     environment: production
     defaults:
@@ -149,6 +176,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-ref.outputs.tag }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -195,10 +224,12 @@ jobs:
           curl --fail --show-error --silent "${PROD_API_HEALTH_URL}" >/dev/null
 
       - name: Summary
+        env:
+          TAG: ${{ needs.resolve-ref.outputs.tag }}
         run: |
           {
             echo "## Server deploy completado"
-            echo "- Tag: \`${GITHUB_REF_NAME}\`"
+            echo "- Tag: \`${TAG}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
 
   # ── Client ──────────────────────────────────────────────
@@ -206,7 +237,7 @@ jobs:
   client-quality:
     name: Client Quality Gates
     runs-on: ubuntu-latest
-    needs: detect-changes
+    needs: [resolve-ref, detect-changes]
     if: needs.detect-changes.outputs.client_changed == 'true'
     defaults:
       run:
@@ -214,6 +245,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-ref.outputs.tag }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -238,7 +271,7 @@ jobs:
   deploy-client:
     name: Deploy Client (Vercel)
     runs-on: ubuntu-latest
-    needs: [detect-changes, client-quality, deploy-server]
+    needs: [resolve-ref, detect-changes, client-quality, deploy-server]
     if: |
       always() &&
       needs.detect-changes.outputs.client_changed == 'true' &&
@@ -251,6 +284,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-ref.outputs.tag }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -329,11 +364,12 @@ jobs:
 
       - name: Summary
         env:
+          TAG: ${{ needs.resolve-ref.outputs.tag }}
           DEPLOYMENT_URL: ${{ steps.vercel_deploy.outputs.deployment_url }}
         run: |
           {
             echo "## Client deploy completado"
-            echo "- Tag: \`${GITHUB_REF_NAME}\`"
+            echo "- Tag: \`${TAG}\`"
             echo "- Deployment URL: \`${DEPLOYMENT_URL}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
 
@@ -342,7 +378,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [deploy-server, deploy-client]
+    needs: [resolve-ref, deploy-server, deploy-client]
     if: |
       always() &&
       (needs.deploy-server.result == 'success' || needs.deploy-server.result == 'skipped') &&
@@ -351,11 +387,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-ref.outputs.tag }}
 
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve-ref.outputs.tag }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
+          gh release create "${TAG}" \
+            --title "${TAG}" \
             --generate-notes
