@@ -290,9 +290,6 @@ jobs:
       needs.client-quality.result == 'success' &&
       (needs.deploy-server.result == 'success' || needs.deploy-server.result == 'skipped')
     environment: production
-    defaults:
-      run:
-        working-directory: apps/client
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -312,6 +309,7 @@ jobs:
           cache-dependency-path: apps/client/pnpm-lock.yaml
 
       - name: Install dependencies
+        working-directory: apps/client
         run: pnpm install --frozen-lockfile
 
       - name: Install Vercel CLI
