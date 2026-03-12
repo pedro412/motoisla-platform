@@ -106,7 +106,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DJANGO_SECRET_KEY: ci-check-secret-key-monorepo-2026-03-12
+      DJANGO_SECRET_KEY: iFc5Kg8jyxtcY3GKkGcpBr6d3_lQ6-MoyOaXHaP-FrzF-6sw_92sqpXl-BH6KykuXR5YsgbWsldJ1SK9w81pdA
       DJANGO_DEBUG: "False"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       DJANGO_CSRF_TRUSTED_ORIGINS: http://localhost:8000
