@@ -1,0 +1,361 @@
+name: Deploy Production
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-prod-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      client_changed: ${{ steps.changes.outputs.client_changed }}
+      server_changed: ${{ steps.changes.outputs.server_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare with previous tag
+        id: changes
+        run: |
+          current_tag="${GITHUB_REF_NAME}"
+          previous_tag="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | grep -B1 "^${current_tag}$" | head -n1)"
+
+          if [ "${previous_tag}" = "${current_tag}" ] || [ -z "${previous_tag}" ]; then
+            echo "First tag or no previous tag found — deploying both"
+            echo "client_changed=true" >> "${GITHUB_OUTPUT}"
+            echo "server_changed=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "Comparing ${previous_tag}..${current_tag}"
+
+            client_changed="false"
+            server_changed="false"
+
+            if git diff --name-only "${previous_tag}..${current_tag}" | grep -q '^apps/client/'; then
+              client_changed="true"
+            fi
+
+            if git diff --name-only "${previous_tag}..${current_tag}" | grep -q '^apps/server/'; then
+              server_changed="true"
+            fi
+
+            echo "client_changed=${client_changed}" >> "${GITHUB_OUTPUT}"
+            echo "server_changed=${server_changed}" >> "${GITHUB_OUTPUT}"
+          fi
+
+          echo "Client changed: $(cat "${GITHUB_OUTPUT}" | grep client_changed)"
+          echo "Server changed: $(cat "${GITHUB_OUTPUT}" | grep server_changed)"
+
+  # ── Server ──────────────────────────────────────────────
+
+  server-quality:
+    name: Server Quality Gates
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.server_changed == 'true'
+    defaults:
+      run:
+        working-directory: apps/server
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: motoisla
+          POSTGRES_USER: motoisla
+          POSTGRES_PASSWORD: motoisla
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U motoisla -d motoisla"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DJANGO_SECRET_KEY: ci-check-secret-key-monorepo-2026-03-12
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DJANGO_CSRF_TRUSTED_ORIGINS: http://localhost:8000
+      DJANGO_CORS_ALLOWED_ORIGINS: http://localhost:3000
+      DJANGO_CORS_ALLOW_CREDENTIALS: "True"
+      DJANGO_CORS_ALLOW_ALL_ORIGINS: "False"
+      DJANGO_SECURE_SSL_REDIRECT: "False"
+      DJANGO_SESSION_COOKIE_SECURE: "False"
+      DJANGO_CSRF_COOKIE_SECURE: "False"
+      DJANGO_SECURE_HSTS_SECONDS: "0"
+      DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: "False"
+      DJANGO_SECURE_HSTS_PRELOAD: "False"
+      DATABASE_URL: postgresql://motoisla:motoisla@localhost:5432/motoisla
+      POSTGRES_DB: motoisla
+      POSTGRES_USER: motoisla
+      POSTGRES_PASSWORD: motoisla
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      MEDIA_PROVIDER: R2
+      R2_ACCOUNT_ID: ci
+      R2_BUCKET: ci
+      R2_ACCESS_KEY_ID: ci
+      R2_SECRET_ACCESS_KEY: ci
+      R2_PUBLIC_BASE_URL: https://example.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/server/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python manage.py test
+
+      - name: Run deploy checks
+        env:
+          DJANGO_DEBUG: "False"
+          DJANGO_ALLOWED_HOSTS: example.com
+          DJANGO_CSRF_TRUSTED_ORIGINS: https://example.com
+          DJANGO_CORS_ALLOWED_ORIGINS: https://example.com
+          DJANGO_SECURE_SSL_REDIRECT: "True"
+          DJANGO_SESSION_COOKIE_SECURE: "True"
+          DJANGO_CSRF_COOKIE_SECURE: "True"
+          DJANGO_SECURE_HSTS_SECONDS: "31536000"
+          DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: "True"
+          DJANGO_SECURE_HSTS_PRELOAD: "True"
+        run: python manage.py check --deploy --fail-level WARNING
+
+  deploy-server:
+    name: Deploy Server (Railway)
+    runs-on: ubuntu-latest
+    needs: [detect-changes, server-quality]
+    if: needs.detect-changes.outputs.server_changed == 'true'
+    environment: production
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Validate deploy secrets
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+          PROD_API_HEALTH_URL: ${{ secrets.PROD_API_HEALTH_URL }}
+        run: |
+          for var in RAILWAY_TOKEN RAILWAY_SERVICE_ID PROD_API_HEALTH_URL; do
+            if [ -z "${!var}" ]; then
+              echo "Falta secret ${var}"
+              exit 1
+            fi
+          done
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+        run: |
+          set -euo pipefail
+          args=(up --service "${RAILWAY_SERVICE_ID}" --ci)
+          if [ -n "${RAILWAY_PROJECT_ID}" ]; then
+            args+=(--project "${RAILWAY_PROJECT_ID}")
+          fi
+          if [ -n "${RAILWAY_ENVIRONMENT_ID}" ]; then
+            args+=(--environment "${RAILWAY_ENVIRONMENT_ID}")
+          fi
+          railway "${args[@]}"
+
+      - name: Smoke test backend
+        env:
+          PROD_API_HEALTH_URL: ${{ secrets.PROD_API_HEALTH_URL }}
+        run: |
+          curl --fail --show-error --silent "${PROD_API_HEALTH_URL}" >/dev/null
+
+      - name: Summary
+        run: |
+          {
+            echo "## Server deploy completado"
+            echo "- Tag: \`${GITHUB_REF_NAME}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  # ── Client ──────────────────────────────────────────────
+
+  client-quality:
+    name: Client Quality Gates
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.client_changed == 'true'
+    defaults:
+      run:
+        working-directory: apps/client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/client/pnpm-lock.yaml
+
+      - name: Run checks
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+
+  deploy-client:
+    name: Deploy Client (Vercel)
+    runs-on: ubuntu-latest
+    needs: [detect-changes, client-quality, deploy-server]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.client_changed == 'true' &&
+      needs.client-quality.result == 'success' &&
+      (needs.deploy-server.result == 'success' || needs.deploy-server.result == 'skipped')
+    environment: production
+    defaults:
+      run:
+        working-directory: apps/client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/client/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Validate deploy secrets
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          PROD_API_HEALTH_URL: ${{ secrets.PROD_API_HEALTH_URL }}
+        run: |
+          for var in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID PROD_API_HEALTH_URL; do
+            if [ -z "${!var}" ]; then
+              echo "Falta secret ${var}"
+              exit 1
+            fi
+          done
+
+      - name: Pull Vercel environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=production --token="${VERCEL_TOKEN}"
+
+      - name: Build deployment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel build --prod --token="${VERCEL_TOKEN}"
+
+      - name: Deploy to Vercel production
+        id: vercel_deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          deployment_url="$(vercel deploy --prebuilt --prod --token="${VERCEL_TOKEN}" | tail -n1)"
+          echo "deployment_url=${deployment_url}" >> "${GITHUB_OUTPUT}"
+
+      - name: Smoke tests (frontend + API)
+        env:
+          PROD_FRONTEND_URL: ${{ secrets.PROD_FRONTEND_URL }}
+          PROD_API_HEALTH_URL: ${{ secrets.PROD_API_HEALTH_URL }}
+          DEPLOYMENT_URL: ${{ steps.vercel_deploy.outputs.deployment_url }}
+        run: |
+          smoke_url="${PROD_FRONTEND_URL}"
+          if [ -z "${smoke_url}" ]; then
+            smoke_url="${DEPLOYMENT_URL}"
+          fi
+
+          if [[ "${smoke_url}" != http* ]]; then
+            smoke_url="https://${smoke_url}"
+          fi
+
+          curl --fail --show-error --silent "${smoke_url}/login" >/dev/null
+          curl --fail --show-error --silent "${smoke_url}/catalog" >/dev/null
+          curl --fail --show-error --silent "${PROD_API_HEALTH_URL}" >/dev/null
+
+      - name: Summary
+        env:
+          DEPLOYMENT_URL: ${{ steps.vercel_deploy.outputs.deployment_url }}
+        run: |
+          {
+            echo "## Client deploy completado"
+            echo "- Tag: \`${GITHUB_REF_NAME}\`"
+            echo "- Deployment URL: \`${DEPLOYMENT_URL}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  # ── Release ─────────────────────────────────────────────
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [deploy-server, deploy-client]
+    if: |
+      always() &&
+      (needs.deploy-server.result == 'success' || needs.deploy-server.result == 'skipped') &&
+      (needs.deploy-client.result == 'success' || needs.deploy-client.result == 'skipped') &&
+      !(needs.deploy-server.result == 'skipped' && needs.deploy-client.result == 'skipped')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

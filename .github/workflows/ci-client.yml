@@ -1,9 +1,15 @@
-name: CI
+name: CI Client
 
 on:
   push:
     branches: [main]
+    paths: ['apps/client/**']
   pull_request:
+    paths: ['apps/client/**']
+
+defaults:
+  run:
+    working-directory: apps/client
 
 jobs:
   checks:
@@ -23,6 +29,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: apps/client/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

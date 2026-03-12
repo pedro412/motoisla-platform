@@ -1,7 +1,7 @@
 # Moto Isla Client — Agent Context
 
-## Two-repo system
-This is one of two repos. The backend API lives in `motoisla-server` (Django + DRF).
+> **Monorepo**: This app lives at `apps/client/` in the `motoisla-platform` monorepo. The backend is at `apps/server/`. See root `CLAUDE.md` for monorepo context.
+
 All client API calls go through a Next.js proxy — never directly to Django.
 
 ## Stack

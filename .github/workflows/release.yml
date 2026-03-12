@@ -1,0 +1,171 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: "SemVer bump para esta release"
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: "Solo validar/calcular (sin crear tags ni deploy)"
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      next_version: ${{ steps.version.outputs.next_version }}
+    steps:
+      - name: Validate branch
+        run: |
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "Este workflow solo puede correrse desde main."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: version
+        shell: bash
+        run: |
+          latest_tag="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n1)"
+          bump_type="${{ inputs.bump_type }}"
+
+          if [ -z "${latest_tag}" ]; then
+            next_version="v2.0.0"
+          else
+            version="${latest_tag#v}"
+            IFS='.' read -r major minor patch <<< "${version}"
+
+            case "${bump_type}" in
+              patch)
+                patch=$((patch + 1))
+                ;;
+              minor)
+                minor=$((minor + 1))
+                patch=0
+                ;;
+              major)
+                major=$((major + 1))
+                minor=0
+                patch=0
+                ;;
+              *)
+                echo "bump_type invalido: ${bump_type}"
+                exit 1
+                ;;
+            esac
+
+            next_version="v${major}.${minor}.${patch}"
+          fi
+
+          echo "next_version=${next_version}" >> "${GITHUB_OUTPUT}"
+          echo "Next version: ${next_version}"
+
+      - name: Ensure tag does not exist
+        env:
+          VERSION: ${{ steps.version.outputs.next_version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "El tag ${VERSION} ya existe"
+            exit 1
+          fi
+
+  quality-gates:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    needs: prepare
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Client checks ──
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/client/pnpm-lock.yaml
+
+      - name: Client quality gates
+        working-directory: apps/client
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+
+  release:
+    name: Create Tag
+    runs-on: ubuntu-latest
+    needs: [prepare, quality-gates]
+    if: ${{ !inputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create and push tag
+        env:
+          VERSION: ${{ needs.prepare.outputs.next_version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -X POST \
+            -f ref="refs/tags/${VERSION}" \
+            -f sha="${GITHUB_SHA}" >/dev/null
+          echo "Tag ${VERSION} creado — deploy-prod.yml se encargará del deploy"
+
+      - name: Summary
+        env:
+          VERSION: ${{ needs.prepare.outputs.next_version }}
+        run: |
+          {
+            echo "## Release iniciada"
+            echo "- Version: \`${VERSION}\`"
+            echo "- SHA: \`${GITHUB_SHA}\`"
+            echo "- El tag trigger ejecutará deploy-prod.yml"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  dry-run-summary:
+    name: Dry Run Summary
+    runs-on: ubuntu-latest
+    needs: [prepare, quality-gates]
+    if: ${{ inputs.dry_run }}
+    steps:
+      - name: Summary
+        env:
+          VERSION: ${{ needs.prepare.outputs.next_version }}
+        run: |
+          {
+            echo "## Dry run completado"
+            echo "- Version calculada: \`${VERSION}\`"
+            echo "- SHA: \`${GITHUB_SHA}\`"
+            echo "- No se crearon tags ni despliegues."
+          } >> "${GITHUB_STEP_SUMMARY}"
