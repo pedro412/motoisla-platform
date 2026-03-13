@@ -1,30 +1,30 @@
 import { createTheme } from "@mui/material/styles";
 
 // Surface elevation scale — neutral zinc dark mode
-// base: #09090b → card: #18181b → elevated (menus/dialogs): #27272a
+// base: #141416 → card: #1e1e22 → elevated (menus/dialogs): #2a2a2e
 
 const theme = createTheme({
   palette: {
     mode: "dark",
     background: {
-      default: "#09090b",
-      paper: "#18181b",
+      default: "#141416",
+      paper: "#1e1e22",
     },
     primary: {
       main: "#38bdf8",
       light: "#7dd3fc",
       dark: "#0284c7",
-      contrastText: "#09090b",
+      contrastText: "#141416",
     },
     secondary: {
       main: "#a78bfa",
     },
     text: {
       primary: "#fafafa",
-      secondary: "#a1a1aa",
+      secondary: "#b0b0b8",
       disabled: "#52525b",
     },
-    divider: "rgba(161, 161, 170, 0.1)",
+    divider: "rgba(161, 161, 170, 0.14)",
     success: {
       main: "#10b981",
       light: "#a7f3d0",
@@ -68,7 +68,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 8,
-          backgroundColor: "rgba(9, 9, 11, 0.45)",
+          backgroundColor: "rgba(30, 30, 34, 0.5)",
           color: "#fafafa",
           "& .MuiOutlinedInput-notchedOutline": {
             borderColor: "rgba(161, 161, 170, 0.18)",
@@ -94,8 +94,8 @@ const theme = createTheme({
     MuiAutocomplete: {
       styleOverrides: {
         paper: {
-          backgroundColor: "#27272a",
-          border: "1px solid rgba(161, 161, 170, 0.14)",
+          backgroundColor: "#2a2a2e",
+          border: "1px solid rgba(161, 161, 170, 0.18)",
         },
         option: {
           color: "#e4e4e7",
@@ -119,7 +119,7 @@ const theme = createTheme({
         containedPrimary: {
           backgroundColor: "#0ea5e9",
           boxShadow: "0 1px 8px rgba(56, 189, 248, 0.2)",
-          color: "#09090b",
+          color: "#141416",
           "&:hover": {
             backgroundColor: "#0284c7",
             boxShadow: "0 2px 12px rgba(56, 189, 248, 0.3)",
@@ -192,9 +192,9 @@ const theme = createTheme({
     MuiDrawer: {
       styleOverrides: {
         paper: {
-          backgroundColor: "#09090b",
+          backgroundColor: "#141416",
           backgroundImage: "none",
-          borderRight: "1px solid rgba(161, 161, 170, 0.08)",
+          borderRight: "1px solid rgba(161, 161, 170, 0.12)",
         },
       },
     },
@@ -239,7 +239,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           "& .MuiTableCell-root": {
-            backgroundColor: "rgba(9, 9, 11, 0.6)",
+            backgroundColor: "rgba(20, 20, 22, 0.6)",
             color: "#71717a",
             fontSize: "0.7rem",
             fontWeight: 700,
@@ -299,9 +299,9 @@ const theme = createTheme({
     MuiDialog: {
       styleOverrides: {
         paper: {
-          backgroundColor: "#27272a",
+          backgroundColor: "#2a2a2e",
           backgroundImage: "none",
-          border: "1px solid rgba(161, 161, 170, 0.12)",
+          border: "1px solid rgba(161, 161, 170, 0.16)",
         },
       },
     },
@@ -309,7 +309,7 @@ const theme = createTheme({
     // === MISC ===
     MuiDivider: {
       styleOverrides: {
-        root: { borderColor: "rgba(161, 161, 170, 0.1)" },
+        root: { borderColor: "rgba(161, 161, 170, 0.14)" },
       },
     },
     MuiCheckbox: {
@@ -333,12 +333,12 @@ const theme = createTheme({
     MuiTooltip: {
       styleOverrides: {
         tooltip: {
-          backgroundColor: "#27272a",
-          border: "1px solid rgba(161, 161, 170, 0.16)",
+          backgroundColor: "#2a2a2e",
+          border: "1px solid rgba(161, 161, 170, 0.18)",
           color: "#e4e4e7",
           fontSize: "0.75rem",
         },
-        arrow: { color: "#27272a" },
+        arrow: { color: "#2a2a2e" },
       },
     },
   },
