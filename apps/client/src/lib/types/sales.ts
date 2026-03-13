@@ -14,6 +14,14 @@ export interface CardCommissionPlan {
   sort_order: number;
 }
 
+export interface CartLine {
+  product: ProductSearchItem;
+  qty: number;
+  unitPrice: number;
+  unitCost: number;
+  discountPct: number;
+}
+
 export interface ProductSearchItem {
   id: string;
   sku: string;

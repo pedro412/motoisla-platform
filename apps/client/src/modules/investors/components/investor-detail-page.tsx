@@ -2,15 +2,18 @@
 
 import {
   Alert,
-  Autocomplete,
+  Avatar,
   Box,
   Button,
+  ButtonBase,
   Chip,
+  ClickAwayListener,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   MenuItem,
   Pagination,
   Paper,
@@ -25,6 +28,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -36,6 +40,7 @@ import type { InvestorAssignmentItem, InvestorLedgerEntry, InvestorLedgerEntryTy
 import type { ProductListItem } from "@/lib/types/products";
 import { investorsService } from "@/modules/investors/services/investors.service";
 import { productsService } from "@/modules/products/services/products.service";
+import { getPrimaryImageUrl } from "@/modules/products/image-upload";
 import { formatCurrency, formatDateTime } from "@/modules/products/utils";
 
 const pageSize = 20;
@@ -207,8 +212,8 @@ export function InvestorDetailPage() {
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [taxRatePct, setTaxRatePct] = useState("16.00");
-  const [selectedProduct, setSelectedProduct] = useState<ProductListItem | null>(null);
   const [productSearch, setProductSearch] = useState("");
+  const [productSearchOpen, setProductSearchOpen] = useState(false);
   const [purchaseLines, setPurchaseLines] = useState<PurchaseLineState[]>([]);
   const [capitalMode, setCapitalMode] = useState<"deposit" | "withdraw" | null>(null);
   const [capitalAmount, setCapitalAmount] = useState("");
@@ -274,7 +279,7 @@ export function InvestorDetailPage() {
       setPurchaseError(null);
       setPurchaseLines([]);
       setProductSearch("");
-      setSelectedProduct(null);
+      setProductSearchOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["investor", investorId] }),
         queryClient.invalidateQueries({ queryKey: ["investor-assignments", investorId] }),
@@ -430,7 +435,7 @@ export function InvestorDetailPage() {
     setPurchaseLines([]);
     setTaxRatePct("16.00");
     setProductSearch("");
-    setSelectedProduct(null);
+    setProductSearchOpen(false);
   }
 
   function closeCapitalDialog() {
@@ -480,8 +485,8 @@ export function InvestorDetailPage() {
     });
 
     setPurchaseError(null);
-    setSelectedProduct(null);
     setProductSearch("");
+    setProductSearchOpen(false);
   }
 
   function updatePurchaseLine(productId: string, patch: Partial<PurchaseLineState>) {
@@ -839,53 +844,169 @@ export function InvestorDetailPage() {
         </Stack>
       </Paper>
 
-      <Dialog open={purchaseOpen} onClose={closePurchaseDialog} fullWidth maxWidth="lg">
-        <DialogTitle>Comprar productos</DialogTitle>
+      <Dialog
+        open={purchaseOpen}
+        onClose={closePurchaseDialog}
+        fullWidth
+        maxWidth="lg"
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            border: "1px solid rgba(56, 189, 248, 0.14)",
+            background:
+              "radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 30%), linear-gradient(180deg, rgba(30, 30, 34, 0.99) 0%, rgba(20, 20, 22, 0.98) 100%)",
+          },
+        }}
+      >
+        <DialogTitle sx={{ borderBottom: "1px solid rgba(161, 161, 170, 0.12)", pb: 2 }}>
+          <Stack spacing={0.35}>
+            <Typography variant="overline" sx={{ color: "#bae6fd", fontWeight: 800, letterSpacing: "0.08em" }}>
+              Inversionista
+            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              Comprar productos
+            </Typography>
+          </Stack>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             {purchaseError ? <Alert severity="error">{purchaseError}</Alert> : null}
 
             <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-              <Autocomplete
-                options={productOptions}
-                value={selectedProduct}
-                onChange={(_event, value) => {
-                  setSelectedProduct(value);
-                  if (value) {
-                    addProductLine(value);
-                  }
-                }}
-                inputValue={productSearch}
-                onInputChange={(_event, value) => setProductSearch(value)}
-                loading={productSearchQuery.isLoading}
-                filterOptions={(options) => options}
-                getOptionLabel={(option) => `${option.sku} · ${option.name}`}
-                isOptionEqualToValue={(option, value) => option.id === value.id}
-                renderInput={(params) => (
+              <ClickAwayListener onClickAway={() => setProductSearchOpen(false)}>
+                <Box sx={{ position: "relative", flex: 1 }}>
                   <TextField
-                    {...params}
                     label="Buscar producto"
+                    value={productSearch}
+                    onChange={(event) => {
+                      setProductSearch(event.target.value);
+                      if (event.target.value.trim().length >= 1) {
+                        setProductSearchOpen(true);
+                      }
+                    }}
+                    onFocus={() => {
+                      if (productSearch.trim().length >= 1) {
+                        setProductSearchOpen(true);
+                      }
+                    }}
                     placeholder="Nombre o SKU"
                     helperText="Solo aparecen productos con disponibilidad para inversionistas."
+                    fullWidth
                   />
-                )}
-                renderOption={(props, option) => {
-                  const { key, ...optionProps } = props;
 
-                  return (
-                    <Box
-                      component="li"
-                      key={key ?? option.id}
-                      {...optionProps}
-                      sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}
+                  {productSearchOpen && productSearch.trim().length >= 1 && (productSearchQuery.isLoading || productOptions.length > 0) ? (
+                    <Paper
+                      elevation={12}
+                      sx={{
+                        position: "absolute",
+                        top: "100%",
+                        mt: 0.5,
+                        left: 0,
+                        right: 0,
+                        zIndex: 20,
+                        borderRadius: 3,
+                        overflow: "hidden",
+                        maxHeight: 380,
+                        overflowY: "auto",
+                        border: "1px solid rgba(56, 189, 248, 0.22)",
+                        backgroundColor: "background.paper",
+                        boxShadow: "0 8px 40px rgba(0, 0, 0, 0.45)",
+                      }}
                     >
-                      <span>{option.sku} · {option.name}</span>
-                      <span>{option.investor_assignable_qty} disp.</span>
-                    </Box>
-                  );
-                }}
-                fullWidth
-              />
+                      {productSearchQuery.isLoading ? (
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 2.5, py: 2 }}>
+                          <CircularProgress size={18} />
+                          <Typography color="text.secondary" variant="body2">Buscando productos...</Typography>
+                        </Stack>
+                      ) : (
+                        <Stack>
+                          {productOptions.map((product, index) => {
+                            const alreadyAdded = purchaseLines.some((l) => l.productId === product.id);
+                            const assignableQty = Number(product.investor_assignable_qty ?? 0);
+
+                            return (
+                              <ButtonBase
+                                key={product.id}
+                                onClick={() => {
+                                  if (!alreadyAdded) addProductLine(product);
+                                }}
+                                disabled={alreadyAdded}
+                                sx={{
+                                  width: "100%",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  px: 2.5,
+                                  py: 1.5,
+                                  textAlign: "left",
+                                  opacity: alreadyAdded ? 0.4 : 1,
+                                  borderTop: index > 0 ? "1px solid rgba(161, 161, 170, 0.1)" : "none",
+                                  transition: "background-color 120ms ease",
+                                  "&:hover": {
+                                    backgroundColor: alreadyAdded ? "transparent" : "rgba(56, 189, 248, 0.08)",
+                                  },
+                                }}
+                              >
+                                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0, flex: 1, mr: 2 }}>
+                                  <Avatar
+                                    variant="rounded"
+                                    src={getPrimaryImageUrl(product.images, product.primary_image_id) ?? undefined}
+                                    alt={product.name}
+                                    sx={{
+                                      width: 44,
+                                      height: 44,
+                                      borderRadius: 1.5,
+                                      flexShrink: 0,
+                                      fontSize: "0.85rem",
+                                      fontWeight: 800,
+                                      bgcolor: "rgba(29, 78, 216, 0.12)",
+                                      color: "#1d4ed8",
+                                      border: "1px solid rgba(29, 78, 216, 0.18)",
+                                    }}
+                                  >
+                                    {product.name.slice(0, 1).toUpperCase()}
+                                  </Avatar>
+                                  <Stack spacing={0.25} alignItems="flex-start" sx={{ minWidth: 0 }}>
+                                    <Typography fontWeight={700} noWrap>{product.name}</Typography>
+                                    <Typography variant="caption" sx={{ color: "#71717a", fontWeight: 600, letterSpacing: "0.04em" }}>
+                                      {product.sku}
+                                    </Typography>
+                                  </Stack>
+                                </Stack>
+
+                                <Stack spacing={0.5} alignItems="flex-end" sx={{ flexShrink: 0 }}>
+                                  <Typography fontWeight={800} sx={{ fontSize: "1.05rem" }}>
+                                    {formatCurrency(Number(product.default_price))}
+                                  </Typography>
+                                  {alreadyAdded ? (
+                                    <Chip
+                                      size="small"
+                                      label="Ya agregado"
+                                      sx={{
+                                        fontWeight: 700,
+                                        fontSize: "0.7rem",
+                                        color: "#a1a1aa",
+                                        backgroundColor: "rgba(161, 161, 170, 0.1)",
+                                        border: "1px solid rgba(161, 161, 170, 0.15)",
+                                      }}
+                                    />
+                                  ) : (
+                                    <Chip
+                                      size="small"
+                                      label={`${assignableQty} disp.`}
+                                      color="success"
+                                      sx={{ fontWeight: 700, "& .MuiChip-label": { px: 1.25 } }}
+                                    />
+                                  )}
+                                </Stack>
+                              </ButtonBase>
+                            );
+                          })}
+                        </Stack>
+                      )}
+                    </Paper>
+                  ) : null}
+                </Box>
+              </ClickAwayListener>
 
               <MoneyInput label="IVA %" value={taxRatePct} onChange={setTaxRatePct} sx={{ minWidth: { md: 160 } }} />
             </Stack>
@@ -915,15 +1036,17 @@ export function InvestorDetailPage() {
                       return (
                         <TableRow key={line.productId} hover>
                           <TableCell>
-                            <Typography fontWeight={700}>{line.productSku}</Typography>
-                            <Typography color="text.secondary" variant="body2">
-                              {line.productName}
-                            </Typography>
-                            {lineError ? (
-                              <Typography color="error.main" variant="body2">
-                                {lineError}
+                            <Stack spacing={0.5}>
+                              <Typography fontWeight={700}>{line.productName}</Typography>
+                              <Typography variant="caption" sx={{ color: "#71717a", fontWeight: 600, letterSpacing: "0.04em" }}>
+                                {line.productSku}
                               </Typography>
-                            ) : null}
+                              {lineError ? (
+                                <Typography color="error.main" variant="body2">
+                                  {lineError}
+                                </Typography>
+                              ) : null}
+                            </Stack>
                           </TableCell>
                           <TableCell align="right">{line.availableQty}</TableCell>
                           <TableCell align="right" sx={{ minWidth: 140 }}>
@@ -945,9 +1068,19 @@ export function InvestorDetailPage() {
                           <TableCell align="right">{formatCurrency(unitCostGross)}</TableCell>
                           <TableCell align="right">{formatCurrency(lineTotal)}</TableCell>
                           <TableCell align="right">
-                            <Button color="error" onClick={() => removePurchaseLine(line.productId)}>
-                              Quitar
-                            </Button>
+                            <IconButton
+                              aria-label={`Quitar ${line.productName}`}
+                              onClick={() => removePurchaseLine(line.productId)}
+                              sx={{
+                                color: "error.main",
+                                width: 40,
+                                height: 40,
+                                backgroundColor: "rgba(239, 68, 68, 0.1)",
+                                "&:hover": { backgroundColor: "rgba(239, 68, 68, 0.18)" },
+                              }}
+                            >
+                              <DeleteOutlineRoundedIcon />
+                            </IconButton>
                           </TableCell>
                         </TableRow>
                       );
@@ -968,9 +1101,23 @@ export function InvestorDetailPage() {
             </Paper>
           </Stack>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ borderTop: "1px solid rgba(161, 161, 170, 0.12)", px: 3, py: 2 }}>
           <Button onClick={closePurchaseDialog}>Cancelar</Button>
-          <Button variant="contained" onClick={submitPurchase} disabled={purchaseMutation.isPending}>
+          <Button
+            variant="contained"
+            onClick={submitPurchase}
+            disabled={purchaseMutation.isPending}
+            sx={{
+              py: 1.25,
+              px: 3,
+              fontWeight: 800,
+              background: "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)",
+              boxShadow: "0 8px 24px rgba(34, 197, 94, 0.25)",
+              "&:hover": {
+                background: "linear-gradient(135deg, #15803d 0%, #16a34a 100%)",
+              },
+            }}
+          >
             {purchaseMutation.isPending ? "Comprando..." : "Confirmar compra"}
           </Button>
         </DialogActions>

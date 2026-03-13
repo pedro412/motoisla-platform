@@ -40,21 +40,14 @@ import { useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/lib/api/errors";
 import { customerService } from "@/modules/customers/services/customer.service";
 import { layawayService } from "@/modules/layaway/services/layaway.service";
-import type { CardCommissionPlan, CardInstrument, CardType, PaymentMethod, ProductSearchItem, SaleResponse } from "@/lib/types/sales";
+import type { CardCommissionPlan, CardInstrument, CartLine, CardType, PaymentMethod, ProductSearchItem, SaleResponse } from "@/lib/types/sales";
 import type { LayawayDetailResponse } from "@/lib/types/layaway";
 import { salesService } from "@/modules/sales/services/sales.service";
 import { getPrimaryImageUrl } from "@/modules/products/image-upload";
 import { buildSaleTicketBytes, buildLayawayTicketBytes, type TicketConfig } from "@/lib/print/escpos";
 import { printViaUSB } from "@/lib/print/usb-printer";
 import { usePrinterStore } from "@/store/printer-store";
-
-interface CartLine {
-  product: ProductSearchItem;
-  qty: number;
-  unitPrice: number;
-  unitCost: number;
-  discountPct: number;
-}
+import { useCartStore } from "@/store/cart-store";
 
 function currency(value: number) {
   return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value);
@@ -153,13 +146,22 @@ export default function PosPage() {
   const [products, setProducts] = useState<ProductSearchItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [lines, setLines] = useState<CartLine[]>([]);
+  const {
+    lines,
+    customerPhone,
+    customerName,
+    addOrIncrement,
+    updateLine: storeUpdateLine,
+    setLineQty: storeSetLineQty,
+    removeLine: storeRemoveLine,
+    setCustomerPhone,
+    setCustomerName,
+    clearCart,
+  } = useCartStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [overrideUser, setOverrideUser] = useState("");
   const [overridePass, setOverridePass] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [customerName, setCustomerName] = useState("");
   const [customerCreditBalance, setCustomerCreditBalance] = useState(0);
   const [creditToApply, setCreditToApply] = useState("");
   const [customerLookupLoading, setCustomerLookupLoading] = useState(false);
@@ -420,12 +422,10 @@ export default function PosPage() {
   }
 
   function resetSaleBuilder() {
-    setLines([]);
+    clearCart();
     setSearch("");
     setProducts([]);
     setSearchOpen(false);
-    setCustomerPhone("");
-    setCustomerName("");
     setCustomerCreditBalance(0);
     setCreditToApply("");
     setLayawayDeposit("");
@@ -443,34 +443,13 @@ export default function PosPage() {
       return;
     }
 
-    const existingIndex = lines.findIndex((line) => line.product.id === product.id);
-    if (existingIndex === -1) {
-      setLines([
-        ...lines,
-        {
-          product,
-          qty: 1,
-          unitPrice: Number(product.default_price),
-          unitCost: Number(product.default_price) * 0.6,
-          discountPct: 0,
-        },
-      ]);
-      setSearch("");
-      setProducts([]);
-      setSearchOpen(false);
-      setInfoMessage(null);
-      return;
-    }
-
-    const existingLine = lines[existingIndex];
-    if (existingLine.qty >= productStock) {
+    const existingLine = lines.find((l) => l.product.id === product.id);
+    if (existingLine && existingLine.qty >= productStock) {
       setInfoMessage(`Stock máximo alcanzado para ${product.name}.`);
       return;
     }
 
-    setLines(
-      lines.map((line, lineIndex) => (lineIndex === existingIndex ? { ...line, qty: line.qty + 1 } : line)),
-    );
+    addOrIncrement(product);
     setSearch("");
     setProducts([]);
     setSearchOpen(false);
@@ -478,18 +457,15 @@ export default function PosPage() {
   }
 
   function updateLine(index: number, patch: Partial<CartLine>) {
-    setLines(lines.map((line, lineIndex) => (lineIndex === index ? { ...line, ...patch } : line)));
+    storeUpdateLine(index, patch);
   }
 
   function setLineQty(index: number, nextQty: number) {
     const targetLine = lines[index];
-    if (!targetLine) {
-      return;
-    }
+    if (!targetLine) return;
 
     const maxQty = Math.max(0, Number(targetLine.product.stock));
     const sanitizedQty = Number.isFinite(nextQty) ? nextQty : 0;
-    const clampedQty = Math.min(Math.max(0, sanitizedQty), maxQty);
 
     if (sanitizedQty > maxQty) {
       setInfoMessage(`Stock máximo alcanzado para ${targetLine.product.name}.`);
@@ -497,16 +473,11 @@ export default function PosPage() {
       setInfoMessage(null);
     }
 
-    if (clampedQty <= 0) {
-      setLines(lines.filter((_, lineIndex) => lineIndex !== index));
-      return;
-    }
-
-    setLines(lines.map((line, lineIndex) => (lineIndex === index ? { ...line, qty: clampedQty } : line)));
+    storeSetLineQty(index, nextQty);
   }
 
   function removeLine(productId: string) {
-    setLines(lines.filter((line) => line.product.id !== productId));
+    storeRemoveLine(productId);
   }
 
   function openCheckout() {
@@ -676,7 +647,7 @@ export default function PosPage() {
           p: { xs: 2.25, md: 3 },
           border: "1px solid rgba(56, 189, 248, 0.14)",
           background:
-            "radial-gradient(circle at top right, rgba(56, 189, 248, 0.16), transparent 35%), radial-gradient(circle at top left, rgba(16, 185, 129, 0.14), transparent 28%), linear-gradient(135deg, rgba(0, 0, 0, 0.98) 0%, rgba(9, 9, 11, 0.96) 100%)",
+            "radial-gradient(circle at top right, rgba(56, 189, 248, 0.16), transparent 35%), radial-gradient(circle at top left, rgba(16, 185, 129, 0.14), transparent 28%), linear-gradient(135deg, rgba(0, 0, 0, 0.98) 0%, rgba(20, 20, 22, 0.96) 100%)",
           boxShadow: "0 24px 64px rgba(0, 0, 0, 0.28)",
         }}
       >
@@ -708,7 +679,7 @@ export default function PosPage() {
         sx={{
           display: "grid",
           gap: 3,
-          gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1.8fr) minmax(320px, 0.9fr)" },
+          gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1.2fr) minmax(340px, 1fr)" },
           alignItems: "start",
         }}
       >
@@ -855,7 +826,7 @@ export default function PosPage() {
               p: 2.5,
               border: "1px solid rgba(161, 161, 170, 0.14)",
               background:
-                "linear-gradient(180deg, rgba(24, 24, 27, 0.98) 0%, rgba(9, 9, 11, 0.96) 100%)",
+                "linear-gradient(180deg, rgba(24, 24, 27, 0.98) 0%, rgba(20, 20, 22, 0.96) 100%)",
             }}
           >
             <Stack spacing={2}>
@@ -885,30 +856,33 @@ export default function PosPage() {
                           borderRadius: 2.5,
                           borderColor: "rgba(161, 161, 170, 0.16)",
                           background:
-                            "linear-gradient(180deg, rgba(39, 39, 42, 0.44) 0%, rgba(9, 9, 11, 0.42) 100%)",
+                            "linear-gradient(180deg, rgba(39, 39, 42, 0.44) 0%, rgba(20, 20, 22, 0.42) 100%)",
                         }}
                       >
-                        <Stack spacing={1.25}>
-                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
-                            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
-                              <Avatar
-                                variant="rounded"
-                                src={getPrimaryImageUrl(line.product.images, line.product.primary_image_id) ?? undefined}
-                                alt={line.product.name}
-                                sx={{
-                                  width: 48,
-                                  height: 48,
-                                  borderRadius: 1.5,
-                                  flexShrink: 0,
-                                  fontSize: "0.9rem",
-                                  fontWeight: 800,
-                                  bgcolor: "rgba(29, 78, 216, 0.12)",
-                                  color: "#1d4ed8",
-                                  border: "1px solid rgba(29, 78, 216, 0.18)",
-                                }}
-                              >
-                                {line.product.name.slice(0, 1).toUpperCase()}
-                              </Avatar>
+                        <Stack direction="row" spacing={1.5}>
+                          <Avatar
+                            variant="rounded"
+                            src={getPrimaryImageUrl(line.product.images, line.product.primary_image_id) ?? undefined}
+                            alt={line.product.name}
+                            sx={{
+                              width: 80,
+                              height: "auto",
+                              alignSelf: "stretch",
+                              minHeight: 80,
+                              borderRadius: 2,
+                              flexShrink: 0,
+                              fontSize: "1.1rem",
+                              fontWeight: 800,
+                              bgcolor: "rgba(29, 78, 216, 0.12)",
+                              color: "#1d4ed8",
+                              border: "1px solid rgba(29, 78, 216, 0.18)",
+                              "& img": { objectFit: "cover" },
+                            }}
+                          >
+                            {line.product.name.slice(0, 1).toUpperCase()}
+                          </Avatar>
+                          <Stack spacing={1.25} sx={{ flex: 1, minWidth: 0 }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                               <Stack spacing={0.5} sx={{ minWidth: 0 }}>
                                 <Typography fontWeight={700} noWrap>{line.product.name}</Typography>
                                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
@@ -918,31 +892,42 @@ export default function PosPage() {
                                   </Typography>
                                 </Stack>
                               </Stack>
+
+                              <Stack direction="row" spacing={0.5} alignItems="center">
+                                <Typography fontWeight={800}>{currency(lineTotal)}</Typography>
+                                <IconButton
+                                  aria-label={`Eliminar ${line.product.name}`}
+                                  onClick={() => removeLine(line.product.id)}
+                                  sx={{
+                                    color: "error.main",
+                                    width: 40,
+                                    height: 40,
+                                    backgroundColor: "rgba(239, 68, 68, 0.1)",
+                                    "&:hover": { backgroundColor: "rgba(239, 68, 68, 0.18)" },
+                                  }}
+                                >
+                                  <DeleteOutlineRoundedIcon />
+                                </IconButton>
+                              </Stack>
                             </Stack>
 
-                            <Stack direction="row" spacing={0.5} alignItems="center">
-                              <Typography fontWeight={800}>{currency(lineTotal)}</Typography>
-                              <IconButton
-                                aria-label={`Eliminar ${line.product.name}`}
-                                onClick={() => removeLine(line.product.id)}
-                                sx={{ color: "error.main" }}
-                              >
-                                <DeleteOutlineRoundedIcon />
-                              </IconButton>
-                            </Stack>
-                          </Stack>
-
-                          <Stack
-                            direction={{ xs: "column", sm: "row" }}
-                            spacing={1.25}
-                            alignItems={{ sm: "center" }}
-                            justifyContent="space-between"
-                          >
+                            <Stack
+                              direction={{ xs: "column", sm: "row" }}
+                              spacing={1.25}
+                              alignItems={{ sm: "center" }}
+                              justifyContent="space-between"
+                            >
                             <Stack direction="row" spacing={0.5} alignItems="center">
                               <IconButton
                                 aria-label={`Reducir cantidad de ${line.product.name}`}
                                 onClick={() => setLineQty(index, line.qty - 1)}
                                 color="primary"
+                                sx={{
+                                  width: 44,
+                                  height: 44,
+                                  backgroundColor: "rgba(56, 189, 248, 0.1)",
+                                  "&:hover": { backgroundColor: "rgba(56, 189, 248, 0.18)" },
+                                }}
                               >
                                 <RemoveRoundedIcon />
                               </IconButton>
@@ -959,6 +944,12 @@ export default function PosPage() {
                                 onClick={() => setLineQty(index, line.qty + 1)}
                                 color="primary"
                                 disabled={line.qty >= stock}
+                                sx={{
+                                  width: 44,
+                                  height: 44,
+                                  backgroundColor: "rgba(56, 189, 248, 0.1)",
+                                  "&:hover": { backgroundColor: "rgba(56, 189, 248, 0.18)" },
+                                }}
                               >
                                 <AddRoundedIcon />
                               </IconButton>
@@ -983,6 +974,7 @@ export default function PosPage() {
                               />
                             </Stack>
                           </Stack>
+                          </Stack>
                         </Stack>
                       </Paper>
                     );
@@ -997,7 +989,7 @@ export default function PosPage() {
               p: 2.5,
               border: "1px solid rgba(161, 161, 170, 0.14)",
               background:
-                "linear-gradient(180deg, rgba(24, 24, 27, 0.98) 0%, rgba(9, 9, 11, 0.96) 100%)",
+                "linear-gradient(180deg, rgba(24, 24, 27, 0.98) 0%, rgba(20, 20, 22, 0.96) 100%)",
             }}
           >
             <Button
@@ -1053,7 +1045,7 @@ export default function PosPage() {
             top: { lg: 24 },
             border: "1px solid rgba(16, 185, 129, 0.16)",
             background:
-              "radial-gradient(circle at top right, rgba(16, 185, 129, 0.14), transparent 30%), linear-gradient(180deg, rgba(24, 24, 27, 0.99) 0%, rgba(9, 9, 11, 0.98) 100%)",
+              "radial-gradient(circle at top right, rgba(16, 185, 129, 0.14), transparent 30%), linear-gradient(180deg, rgba(24, 24, 27, 0.99) 0%, rgba(20, 20, 22, 0.98) 100%)",
             boxShadow: "0 20px 48px rgba(0, 0, 0, 0.24)",
           }}
         >
@@ -1161,14 +1153,16 @@ export default function PosPage() {
               disabled={lines.length === 0}
               sx={{
                 mt: 1,
-                py: 1.75,
+                py: 2.5,
+                minHeight: 64,
                 borderRadius: 3,
-                fontSize: "1.05rem",
+                fontSize: "1.3rem",
                 fontWeight: 800,
-                background: "linear-gradient(135deg, #15803d 0%, #16a34a 100%)",
-                boxShadow: "0 14px 28px rgba(22, 163, 74, 0.18)",
+                background: "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)",
+                boxShadow: "0 8px 24px rgba(34, 197, 94, 0.3), 0 0 0 1px rgba(34, 197, 94, 0.15)",
                 "&:hover": {
-                  background: "linear-gradient(135deg, #166534 0%, #15803d 100%)",
+                  background: "linear-gradient(135deg, #15803d 0%, #16a34a 100%)",
+                  boxShadow: "0 12px 32px rgba(34, 197, 94, 0.4), 0 0 0 1px rgba(34, 197, 94, 0.25)",
                 },
               }}
             >
@@ -1181,13 +1175,17 @@ export default function PosPage() {
               disabled={lines.length === 0}
               sx={{
                 borderRadius: 3,
-                py: 1.4,
+                py: 2,
+                minHeight: 56,
+                fontSize: "1.1rem",
                 fontWeight: 800,
-                borderColor: "rgba(56, 189, 248, 0.3)",
+                borderColor: "rgba(56, 189, 248, 0.45)",
+                borderWidth: 1.5,
                 color: "#bae6fd",
                 "&:hover": {
-                  borderColor: "rgba(56, 189, 248, 0.45)",
-                  backgroundColor: "rgba(56, 189, 248, 0.08)",
+                  borderColor: "rgba(56, 189, 248, 0.65)",
+                  borderWidth: 1.5,
+                  backgroundColor: "rgba(56, 189, 248, 0.1)",
                 },
               }}
             >
@@ -1211,7 +1209,7 @@ export default function PosPage() {
             borderRadius: 3,
             border: "1px solid rgba(56, 189, 248, 0.14)",
             background:
-              "radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 30%), linear-gradient(180deg, rgba(24, 24, 27, 0.99) 0%, rgba(9, 9, 11, 0.98) 100%)",
+              "radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 30%), linear-gradient(180deg, rgba(24, 24, 27, 0.99) 0%, rgba(20, 20, 22, 0.98) 100%)",
           },
         }}
       >
@@ -1337,7 +1335,17 @@ export default function PosPage() {
                       key={suggestion}
                       variant="outlined"
                       onClick={() => setCashReceived(suggestion.toFixed(2))}
-                      sx={{ justifyContent: "space-between" }}
+                      sx={{
+                        justifyContent: "space-between",
+                        py: 1.5,
+                        fontSize: "1rem",
+                        fontWeight: 700,
+                        borderColor: "rgba(161, 161, 170, 0.3)",
+                        "&:hover": {
+                          borderColor: "rgba(56, 189, 248, 0.5)",
+                          backgroundColor: "rgba(56, 189, 248, 0.08)",
+                        },
+                      }}
                       fullWidth
                     >
                       {currency(suggestion)}
@@ -1434,7 +1442,7 @@ export default function PosPage() {
                 p: 1.75,
                 borderRadius: 2,
                 border: "1px solid rgba(161, 161, 170, 0.18)",
-                background: "rgba(9, 9, 11, 0.58)",
+                background: "rgba(20, 20, 22, 0.58)",
               }}
             >
               <Stack spacing={1}>
@@ -1540,7 +1548,7 @@ export default function PosPage() {
             borderRadius: 3,
             border: "1px solid rgba(56, 189, 248, 0.14)",
             background:
-              "radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 30%), linear-gradient(180deg, rgba(24, 24, 27, 0.99) 0%, rgba(9, 9, 11, 0.98) 100%)",
+              "radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 30%), linear-gradient(180deg, rgba(24, 24, 27, 0.99) 0%, rgba(20, 20, 22, 0.98) 100%)",
           },
         }}
       >
@@ -1650,7 +1658,7 @@ export default function PosPage() {
             borderRadius: 3,
             border: "1px solid rgba(16, 185, 129, 0.14)",
             background:
-              "radial-gradient(circle at top right, rgba(16, 185, 129, 0.12), transparent 30%), linear-gradient(180deg, rgba(24, 24, 27, 0.99) 0%, rgba(9, 9, 11, 0.98) 100%)",
+              "radial-gradient(circle at top right, rgba(16, 185, 129, 0.12), transparent 30%), linear-gradient(180deg, rgba(24, 24, 27, 0.99) 0%, rgba(20, 20, 22, 0.98) 100%)",
           },
         }}
       >
